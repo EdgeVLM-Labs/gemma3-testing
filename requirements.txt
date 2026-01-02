@@ -1,0 +1,20 @@
+# Core dependencies for inference
+torch>=2.0.0
+transformers>=4.40.0
+accelerate>=0.27.0
+pillow>=10.0.0
+opencv-python>=4.8.0
+tqdm>=4.65.0
+
+# Fine-tuning dependencies
+datasets>=2.14.0
+trl>=0.8.0
+peft>=0.10.0
+bitsandbytes>=0.43.0
+
+# Optional but recommended
+decord>=0.6.0  # Better video decoding
+soundfile>=0.12.0  # Audio support
+
+# Utilities
+numpy>=1.24.0
