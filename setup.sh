@@ -5,6 +5,10 @@
 
 set -e  # Exit on error
 
+# Store project root directory
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$PROJECT_ROOT"
+
 # Colors for output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -13,6 +17,8 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}🚀 Gemma 3n Setup Script${NC}"
 echo "================================"
+echo -e "${BLUE}Project root: ${PROJECT_ROOT}${NC}"
+echo ""
 
 # --------------------------------------------------
 # 1️⃣ Check for Conda
@@ -52,10 +58,12 @@ if conda env list | grep -q "^${ENV_NAME} "; then
     else
         echo -e "${YELLOW}Using existing environment${NC}"
         conda activate ${ENV_NAME}
-        cd "$(dirname "$0")"
+        cd "$PROJECT_ROOT"
         pip install --upgrade pip
-        pip install -r requirements.txt
-        echo -e "${GREEN}✅ Updated dependencies${NC}"
+        if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+            echo -e "${GREEN}✅ Updated dependencies${NC}"
+        fi
         exit 0
     fi
 fi
@@ -84,8 +92,15 @@ fi
 # 4️⃣ Install Project Dependencies
 # --------------------------------------------------
 echo -e "${BLUE}📦 Installing project dependencies...${NC}"
-cd "$(dirname "$0")"  # Go to script directory (project root)
-pip install -r requirements.txt
+cd "$PROJECT_ROOT"
+
+# Verify requirements.txt exists
+if [ ! -f "requirements.txt" ]; then
+    echo -e "${YELLOW}⚠️  requirements.txt not found in ${PROJECT_ROOT}${NC}"
+    echo -e "${YELLOW}Skipping dependency installation${NC}"
+else
+    pip install -r requirements.txt
+fi
 
 # Optional: Install Decord for faster video processing
 echo -e "${YELLOW}📹 Installing optional Decord library...${NC}"
@@ -189,6 +204,7 @@ read -p "Do you want to initialize the QVED dataset now? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo -e "${BLUE}📥 Initializing dataset...${NC}"
+    cd "$PROJECT_ROOT"
     ./scripts/initialize_dataset.sh
 fi
 
@@ -196,6 +212,7 @@ fi
 # 🔟 Make Scripts Executable
 # --------------------------------------------------
 echo -e "${BLUE}🔧 Making scripts executable...${NC}"
+cd "$PROJECT_ROOT"
 chmod +x scripts/*.sh
 
 # --------------------------------------------------
