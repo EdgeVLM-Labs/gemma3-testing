@@ -48,36 +48,18 @@ def generate(
     start_time = time.time()
 
     try:
-        # Apply chat template to get text
-        text_prompt = apply_chat_template_if_available(
-            processor,
-            messages,
-            add_generation_prompt=True
-        )
+        # For Gemma 3n, apply chat template with images embedded in messages
+        # The tokenizer will handle image tokens internally
+        tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
 
-        # Prepare inputs
-        # Try multimodal processing if images are provided
-        if images:
-            try:
-                # Try passing images to processor
-                inputs = processor(
-                    text=text_prompt,
-                    images=images,
-                    return_tensors="pt"
-                )
-            except TypeError:
-                # Processor might not accept images parameter
-                logger.warning("Processor doesn't accept 'images' parameter, trying text-only")
-                inputs = processor(
-                    text=text_prompt,
-                    return_tensors="pt"
-                )
-        else:
-            # Text-only
-            inputs = processor(
-                text=text_prompt,
-                return_tensors="pt"
-            )
+        # Apply chat template - for Gemma 3n this handles images automatically
+        inputs = tokenizer.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt"
+        )
 
         # Move inputs to device
         inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v

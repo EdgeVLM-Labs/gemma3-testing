@@ -172,16 +172,24 @@ echo "================================"
 read -p "Do you want to set up HuggingFace authentication now? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}🤗 Logging into HuggingFace Hub...${NC}"
-    huggingface-cli login
+    if command -v huggingface-cli &> /dev/null; then
+        echo -e "${YELLOW}🤗 Logging into HuggingFace Hub...${NC}"
+        huggingface-cli login
+    else
+        echo -e "${YELLOW}⚠️  huggingface-cli not found. Please run: pip install huggingface-hub${NC}"
+    fi
 fi
 
 # WandB
 read -p "Do you want to set up WandB authentication now? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}📊 Logging into WandB...${NC}"
-    wandb login
+    if command -v wandb &> /dev/null; then
+        echo -e "${YELLOW}📊 Logging into WandB...${NC}"
+        wandb login
+    else
+        echo -e "${YELLOW}⚠️  wandb not found. Please run: pip install wandb${NC}"
+    fi
 fi
 
 # Dataset Setup
@@ -224,3 +232,5 @@ echo -e "   ${YELLOW}./scripts/verify_setup.sh${NC}"
 echo ""
 echo -e "${BLUE}📚 Documentation:${NC} See README.md for detailed usage"
 echo ""
+
+source ~/.bashrc
