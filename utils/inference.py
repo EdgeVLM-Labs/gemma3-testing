@@ -48,18 +48,51 @@ def generate(
     start_time = time.time()
 
     try:
-        # For Gemma 3n, apply chat template with images embedded in messages
-        # The tokenizer will handle image tokens internally
+        # Get tokenizer from processor
         tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
 
-        # Apply chat template - for Gemma 3n this handles images automatically
-        inputs = tokenizer.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt"
-        )
+        # Check if chat template is available
+        has_chat_template = hasattr(tokenizer, "chat_template") and tokenizer.chat_template is not None
+
+        if has_chat_template:
+            # Use chat template - this handles images embedded in messages
+            inputs = tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt"
+            )
+        else:
+            # Fallback: manually process messages and images
+            logger.warning("No chat template found, using fallback processing")
+
+            # Extract text from messages
+            text_parts = []
+            for message in messages:
+                content = message.get("content", [])
+                if isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            text_parts.append(item.get("text", ""))
+                elif isinstance(content, str):
+                    text_parts.append(content)
+
+            text_prompt = "\n".join(text_parts)
+
+            # Process with images if provided
+            if images:
+                inputs = processor(
+                    text=text_prompt,
+                    images=images,
+                    return_tensors="pt"
+                )
+            else:
+                inputs = processor(
+                    text=text_prompt,
+                    return_tensors="pt"
+                )
+
 
         # Move inputs to device
         inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v
