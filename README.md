@@ -14,11 +14,16 @@ A clean, production-ready Python project for running inference and fine-tuning o
 ## Table of Contents
 
 - [Installation](#installation)
+- [Dataset Preparation](#dataset-preparation)
+  - [Quick Setup](#quick-setup)
+  - [Manual Setup](#manual-setup)
 - [Quick Start](#quick-start)
   - [Text-Only Inference](#text-only-inference)
   - [Image + Text Inference](#image--text-inference)
   - [Video + Text Inference](#video--text-inference)
   - [Fine-Tuning](#fine-tuning)
+- [Training Monitoring](#training-monitoring)
+- [Model Sharing](#model-sharing)
 - [Project Structure](#project-structure)
 - [Dataset Format](#dataset-format)
 - [Advanced Usage](#advanced-usage)
@@ -68,6 +73,67 @@ Gemma models may be gated. You'll need to:
    ```bash
    huggingface-cli login
    ```
+
+---
+
+## Dataset Preparation
+
+This project includes utilities for working with the **QVED** (Qualified Exercise Dataset) from EdgeVLM-Labs.
+
+### Quick Setup
+
+Run the complete dataset preparation pipeline:
+
+```bash
+# One-command setup (install + dataset + verification)
+./scripts/quick_setup.sh
+
+# Or manually initialize dataset only
+./scripts/initialize_dataset.sh
+```
+
+This will:
+
+1. Download videos from the QVED dataset
+2. Filter ground truth annotations
+3. Convert to Gemma JSONL format (train/val/test splits)
+4. Verify the setup
+
+### Manual Setup
+
+If you prefer manual control:
+
+```bash
+# 1. Download videos (will prompt for count per class)
+python -m utils.load_dataset
+
+# 2. Filter annotations to match downloaded videos
+python -m utils.filter_ground_truth
+
+# 3. Convert to Gemma format with 60/20/20 split
+python -m utils.convert_dataset
+
+# 4. Verify everything is set up correctly
+./scripts/verify_setup.sh
+```
+
+**Dataset Structure:**
+
+```
+dataset/
+├── videos/
+│   ├── exercise1/
+│   │   ├── video1.mp4
+│   │   └── ...
+│   └── exercise2/
+│       └── ...
+├── manifest.json              # Downloaded video metadata
+├── fine_grained_labels.json   # Original QVED annotations
+├── ground_truth.json          # Filtered annotations
+├── gemma_train.jsonl          # Training set (60%)
+├── gemma_val.jsonl            # Validation set (20%)
+└── gemma_test.jsonl           # Test set (20%)
+```
 
 ---
 
@@ -150,6 +216,73 @@ processor = AutoProcessor.from_pretrained("google/gemma-3n-E2B", trust_remote_co
 
 ---
 
+## Training Monitoring
+
+Monitor your training progress with visualization tools:
+
+```bash
+# Plot training statistics (auto-detects latest log)
+./scripts/plot_training.sh
+
+# Or specify a specific log file
+./scripts/plot_training.sh --log_file outputs/training.log --model_name "Gemma-3n-QVED"
+```
+
+This generates:
+
+- **training_report.pdf**: Combined plots (loss, gradient norm, learning rate)
+- Individual PNG plots for each metric
+- **training_summary.txt**: Statistical summary
+
+**Direct Python usage:**
+
+```python
+from utils.plot_training_stats import plot_combined
+
+plot_combined(
+    log_file="outputs/training.log",
+    output_dir="plots",
+    model_name="Gemma-3n-QVED"
+)
+```
+
+---
+
+## Model Sharing
+
+Upload your fine-tuned model to Hugging Face Hub:
+
+```bash
+python -m utils.hf_upload \
+  --model_path outputs/gemma3n-finetuned \
+  --repo_name username/gemma3n-qved \
+  --base_model google/gemma-3n-E2B \
+  --dataset EdgeVLM-Labs/QVED-Test-Dataset \
+  --private
+```
+
+This automatically:
+
+- Creates a model card with training details
+- Uploads adapter weights or full model
+- Documents hyperparameters and usage examples
+
+**From Python:**
+
+```python
+from utils.hf_upload import upload_model_to_hf
+
+upload_model_to_hf(
+    model_path="outputs/gemma3n-finetuned",
+    repo_name="username/gemma3n-qved",
+    base_model="google/gemma-3n-E2B",
+    dataset_name="EdgeVLM-Labs/QVED-Test-Dataset",
+    private=False
+)
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -165,10 +298,19 @@ processor = AutoProcessor.from_pretrained("google/gemma-3n-E2B", trust_remote_co
 │   ├── video_utils.py        # Video frame sampling
 │   ├── dataset_utils.py      # JSONL dataset loader
 │   ├── inference.py          # Inference functions
-│   └── finetune.py           # Fine-tuning with TRL + PEFT
+│   ├── finetune.py           # Fine-tuning with TRL + PEFT
+│   ├── load_dataset.py       # QVED video downloader
+│   ├── filter_ground_truth.py # Annotation filtering
+│   ├── convert_dataset.py    # QVED to Gemma converter
+│   ├── plot_training_stats.py # Training visualization
+│   └── hf_upload.py          # HuggingFace model upload
 └── scripts/
     ├── run_inference.py      # Inference CLI
-    └── run_finetune.py       # Fine-tuning CLI
+    ├── run_finetune.py       # Fine-tuning CLI
+    ├── initialize_dataset.sh # Complete dataset setup
+    ├── verify_setup.sh       # Setup verification
+    ├── quick_setup.sh        # One-command install & setup
+    └── plot_training.sh      # Training plots wrapper
 ```
 
 ---
