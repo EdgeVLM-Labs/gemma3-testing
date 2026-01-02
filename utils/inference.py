@@ -49,18 +49,28 @@ def generate(
 
     try:
         # Get tokenizer from processor
-        tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
+        if hasattr(processor, "tokenizer"):
+            tokenizer = processor.tokenizer
+        elif hasattr(processor, "get_tokenizer"):
+            tokenizer = processor.get_tokenizer()
+        else:
+            tokenizer = processor
 
-        # Check if chat template is available
-        has_chat_template = hasattr(tokenizer, "chat_template") and tokenizer.chat_template is not None
-
-        if has_chat_template:
-            # Use chat template - this handles images embedded in messages
-            inputs = tokenizer.apply_chat_template(
+        # For Gemma 3n multimodal models, we need to use processor.apply_chat_template
+        # This properly handles image tokens
+        if hasattr(processor, "apply_chat_template"):
+            # Use processor's chat template (handles images internally)
+            logger.debug("Using processor.apply_chat_template")
+            inputs = processor.apply_chat_template(
                 messages,
                 add_generation_prompt=True,
                 tokenize=True,
                 return_dict=True,
+                return_tensors="pt"
+            )
+        elif hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template is not None:
+            # Use tokenizer's chat template
+            logger.debug("Using tokenizer.apply_chat_template")
                 return_tensors="pt"
             )
         else:
