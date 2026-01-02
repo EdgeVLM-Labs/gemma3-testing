@@ -5,6 +5,13 @@ from typing import Optional, Tuple, Any
 import torch
 from transformers import AutoProcessor, AutoModelForCausalLM
 
+# Try to import the correct model class for multimodal
+try:
+    from transformers import AutoModelForImageTextToText
+    HAS_IMAGE_TEXT_MODEL = True
+except ImportError:
+    HAS_IMAGE_TEXT_MODEL = False
+
 logger = logging.getLogger("gemma3n")
 
 
@@ -98,7 +105,17 @@ def load_model_for_inference(
         logger.info(f"Loading model {model_id}...")
         logger.info(f"  Device: {device}, dtype: {dtype}, quant: {quant}")
 
-        model = AutoModelForCausalLM.from_pretrained(**load_kwargs)
+        # Try to use AutoModelForImageTextToText for multimodal models
+        # Fall back to AutoModelForCausalLM if not available
+        if HAS_IMAGE_TEXT_MODEL:
+            try:
+                model = AutoModelForImageTextToText.from_pretrained(**load_kwargs)
+                logger.info("Loaded model using AutoModelForImageTextToText")
+            except Exception as e:
+                logger.warning(f"AutoModelForImageTextToText failed ({e}), falling back to AutoModelForCausalLM")
+                model = AutoModelForCausalLM.from_pretrained(**load_kwargs)
+        else:
+            model = AutoModelForCausalLM.from_pretrained(**load_kwargs)
 
         # Move to device if not using device_map
         if device != "auto" and quant == "none":

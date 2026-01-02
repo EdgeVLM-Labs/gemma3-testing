@@ -48,69 +48,19 @@ def generate(
     start_time = time.time()
 
     try:
-        # Get tokenizer from processor
-        if hasattr(processor, "tokenizer"):
-            tokenizer = processor.tokenizer
-        elif hasattr(processor, "get_tokenizer"):
-            tokenizer = processor.get_tokenizer()
-        else:
-            tokenizer = processor
+        # Per Google documentation, use processor.apply_chat_template for Gemma 3n
+        # This properly handles images embedded in the messages
+        logger.debug("Using processor.apply_chat_template with embedded images")
+        inputs = processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt"
+        )
 
-        # For Gemma 3n multimodal models, we need to use processor.apply_chat_template
-        # This properly handles image tokens
-        if hasattr(processor, "apply_chat_template"):
-            # Use processor's chat template (handles images internally)
-            logger.debug("Using processor.apply_chat_template")
-            inputs = processor.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=True,
-                return_dict=True,
-                return_tensors="pt"
-            )
-        elif hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template is not None:
-            # Use tokenizer's chat template
-            logger.debug("Using tokenizer.apply_chat_template")
-            inputs = tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=True,
-                return_dict=True,
-                return_tensors="pt"
-            )
-        else:
-            # Fallback: manually process messages and images
-            logger.warning("No chat template found, using fallback processing")
-
-            # Extract text from messages
-            text_parts = []
-            for message in messages:
-                content = message.get("content", [])
-                if isinstance(content, list):
-                    for item in content:
-                        if isinstance(item, dict) and item.get("type") == "text":
-                            text_parts.append(item.get("text", ""))
-                elif isinstance(content, str):
-                    text_parts.append(content)
-
-            text_prompt = "\n".join(text_parts)
-
-            # Process with images if provided
-            if images:
-                inputs = processor(
-                    text=text_prompt,
-                    images=images,
-                    return_tensors="pt"
-                )
-            else:
-                inputs = processor(
-                    text=text_prompt,
-                    return_tensors="pt"
-                )
-
-        # Move inputs to device
-        inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v
-                  for k, v in inputs.items()}
+        # Move inputs to device and convert to model dtype
+        inputs = inputs.to(model.device, dtype=model.dtype)
 
         # Prepare generation config
         generation_config = {
@@ -127,7 +77,7 @@ def generate(
 
         with torch.no_grad():
             if use_amp:
-                with torch.cuda.amp.autocast(dtype=model.dtype):
+                with torch.amp.autocast('cuda', dtype=model.dtype):
                     outputs = model.generate(**inputs, **generation_config)
             else:
                 outputs = model.generate(**inputs, **generation_config)
