@@ -20,3 +20,8 @@ soundfile>=0.12.0  # Audio support
 numpy>=1.24.0
 wandb
 timm
+ipywidgets
+ipykernel
+jupyter
+notebook
+opencv-python

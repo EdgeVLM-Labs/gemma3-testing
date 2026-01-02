@@ -48,16 +48,36 @@ def generate(
     start_time = time.time()
 
     try:
-        # Per Google documentation, use processor.apply_chat_template for Gemma 3n
-        # This properly handles images embedded in the messages
-        logger.debug("Using processor.apply_chat_template with embedded images")
-        inputs = processor.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt"
-        )
+        # Try to use processor.apply_chat_template if available
+        # Some processors don't have chat templates, so we need to handle both cases
+        if hasattr(processor, 'apply_chat_template'):
+            try:
+                logger.debug("Using processor.apply_chat_template with embedded images")
+                inputs = processor.apply_chat_template(
+                    messages,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    return_dict=True,
+                    return_tensors="pt"
+                )
+            except (AttributeError, ValueError) as e:
+                logger.warning(f"processor.apply_chat_template failed: {e}, using processor directly")
+                # Fallback: process images and text separately
+                inputs = processor(
+                    text=[apply_chat_template_if_available(processor, messages)],
+                    images=images if images else None,
+                    return_tensors="pt",
+                    padding=True
+                )
+        else:
+            logger.debug("No apply_chat_template available, using processor directly")
+            # Process images and text separately
+            inputs = processor(
+                text=[apply_chat_template_if_available(processor, messages)],
+                images=images if images else None,
+                return_tensors="pt",
+                padding=True
+            )
 
         # Move inputs to device and convert to model dtype
         inputs = inputs.to(model.device, dtype=model.dtype)

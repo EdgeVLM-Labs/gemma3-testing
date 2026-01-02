@@ -53,6 +53,7 @@ if conda env list | grep -q "^${ENV_NAME} "; then
         pip install --upgrade pip
         if [ -f "requirements.txt" ]; then
             pip install -r requirements.txt
+            python -m ipykernel install --user --name=gemma3 --display-name "Python (gemma3)"
             echo -e "${GREEN}✅ Updated dependencies${NC}"
         fi
         exit 0
