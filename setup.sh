@@ -31,6 +31,12 @@ else
     source $HOME/miniconda/etc/profile.d/conda.sh 2>/dev/null || source $(conda info --base)/etc/profile.d/conda.sh
 fi
 
+# Accept Conda Terms of Service
+echo -e "${BLUE}📜 Accepting Conda Terms of Service...${NC}"
+conda config --set allow_conda_downgrades true 2>/dev/null || true
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main 2>/dev/null || true
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r 2>/dev/null || true
+
 # --------------------------------------------------
 # 2️⃣ Create Conda Environment
 # --------------------------------------------------
