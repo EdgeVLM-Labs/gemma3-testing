@@ -1,28 +1,22 @@
 #!/bin/bash
-# ==========================================
 # Setup Script for Gemma 3n Testing
-# ==========================================
 
-set -e  # Exit on error
+set -e
 
-# Store project root directory
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_ROOT"
 
-# Colors for output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 echo -e "${BLUE}🚀 Gemma 3n Setup Script${NC}"
 echo "================================"
 echo -e "${BLUE}Project root: ${PROJECT_ROOT}${NC}"
 echo ""
 
-# --------------------------------------------------
-# 1️⃣ Check for Conda
-# --------------------------------------------------
+# Check for Conda
 if ! command -v conda &> /dev/null; then
     echo -e "${YELLOW}📦 Conda not found. Installing Miniconda...${NC}"
     cd /tmp
@@ -37,15 +31,12 @@ else
     source $HOME/miniconda/etc/profile.d/conda.sh 2>/dev/null || source $(conda info --base)/etc/profile.d/conda.sh
 fi
 
-# Accept Conda Terms of Service
 echo -e "${BLUE}📜 Accepting Conda Terms of Service...${NC}"
 conda config --set allow_conda_downgrades true 2>/dev/null || true
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main 2>/dev/null || true
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r 2>/dev/null || true
 
-# --------------------------------------------------
-# 2️⃣ Create Conda Environment
-# --------------------------------------------------
+# Create Conda Environment
 ENV_NAME="gemma3"
 
 if conda env list | grep -q "^${ENV_NAME} "; then
@@ -72,13 +63,10 @@ echo -e "${BLUE}🔧 Creating conda environment: ${ENV_NAME}${NC}"
 conda create --name=${ENV_NAME} python=3.11 -y
 conda activate ${ENV_NAME}
 
-# --------------------------------------------------
-# 3️⃣ Install PyTorch with CUDA Support
-# --------------------------------------------------
+# Install PyTorch with CUDA Support
 echo -e "${BLUE}🔥 Installing PyTorch with CUDA 12.1...${NC}"
 pip install --upgrade pip
 
-# Check if CUDA is available
 if command -v nvcc &> /dev/null; then
     echo -e "${GREEN}✅ CUDA toolkit found${NC}"
     nvcc --version
@@ -88,13 +76,10 @@ else
     pip install torch torchvision torchaudio
 fi
 
-# --------------------------------------------------
-# 4️⃣ Install Project Dependencies
-# --------------------------------------------------
+# Install Project Dependencies
 echo -e "${BLUE}📦 Installing project dependencies...${NC}"
 cd "$PROJECT_ROOT"
 
-# Verify requirements.txt exists
 if [ ! -f "requirements.txt" ]; then
     echo -e "${YELLOW}⚠️  requirements.txt not found in ${PROJECT_ROOT}${NC}"
     echo -e "${YELLOW}Skipping dependency installation${NC}"
@@ -102,13 +87,10 @@ else
     pip install -r requirements.txt
 fi
 
-# Optional: Install Decord for faster video processing
 echo -e "${YELLOW}📹 Installing optional Decord library...${NC}"
 pip install decord || echo -e "${YELLOW}⚠️  Decord installation failed (optional)${NC}"
 
-# --------------------------------------------------
-# 5️⃣ Install FlashAttention (Optional)
-# --------------------------------------------------
+# Install FlashAttention (Optional)
 read -p "Do you want to install FlashAttention for faster training? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
@@ -116,22 +98,30 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     pip install flash-attn --no-build-isolation || echo -e "${YELLOW}⚠️  FlashAttention installation failed (optional)${NC}"
 fi
 
-# --------------------------------------------------
-# 6️⃣ Install LaTeX for Plotting (Optional)
-# --------------------------------------------------
+# Install LaTeX for Plotting (Optional)
 if command -v apt-get &> /dev/null; then
-    read -p "Do you want to install LaTeX for publication-quality plots? (requires sudo) (y/N): " -n 1 -r
+    read -p "Do you want to install LaTeX for publication-quality plots? (requires sudo/root) (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo -e "${BLUE}📊 Installing LaTeX packages...${NC}"
-        sudo apt-get update
-        sudo apt-get install -y texlive texlive-latex-extra texlive-fonts-recommended dvipng cm-super
+
+        # Check if running as root or if sudo is available
+        if [ "$EUID" -eq 0 ]; then
+            # Running as root, use apt-get directly
+            apt-get update
+            apt-get install -y texlive texlive-latex-extra texlive-fonts-recommended dvipng cm-super
+        elif command -v sudo &> /dev/null; then
+            # sudo is available
+            sudo apt-get update
+            sudo apt-get install -y texlive texlive-latex-extra texlive-fonts-recommended dvipng cm-super
+        else
+            echo -e "${YELLOW}⚠️  Neither root privileges nor sudo available. Skipping LaTeX installation.${NC}"
+            echo -e "${YELLOW}   You can install manually later with: apt-get install texlive texlive-latex-extra${NC}"
+        fi
     fi
 fi
 
-# --------------------------------------------------
-# 7️⃣ Verify Installation
-# --------------------------------------------------
+# Verify Installation
 echo ""
 echo -e "${BLUE}🔍 Verifying Installation...${NC}"
 echo "================================"
@@ -173,9 +163,7 @@ except ImportError:
     print('⚠️  Flash Attention: Not installed (optional)')
 "
 
-# --------------------------------------------------
-# 8️⃣ Authentication Setup
-# --------------------------------------------------
+# Authentication Setup
 echo ""
 echo -e "${BLUE}🔑 Authentication Setup${NC}"
 echo "================================"
@@ -196,9 +184,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     wandb login
 fi
 
-# --------------------------------------------------
-# 9️⃣ Dataset Setup
-# --------------------------------------------------
+# Dataset Setup
 echo ""
 read -p "Do you want to initialize the QVED dataset now? (y/N): " -n 1 -r
 echo
@@ -208,16 +194,12 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     ./scripts/initialize_dataset.sh
 fi
 
-# --------------------------------------------------
-# 🔟 Make Scripts Executable
-# --------------------------------------------------
+# Make Scripts Executable
 echo -e "${BLUE}🔧 Making scripts executable...${NC}"
 cd "$PROJECT_ROOT"
 chmod +x scripts/*.sh
 
-# --------------------------------------------------
-# ✅ Setup Complete
-# --------------------------------------------------
+# Setup Complete
 echo ""
 echo -e "${GREEN}================================${NC}"
 echo -e "${GREEN}✅ Setup Complete!${NC}"
