@@ -71,6 +71,11 @@ def generate(
         elif hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template is not None:
             # Use tokenizer's chat template
             logger.debug("Using tokenizer.apply_chat_template")
+            inputs = tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_dict=True,
                 return_tensors="pt"
             )
         else:
@@ -102,7 +107,6 @@ def generate(
                     text=text_prompt,
                     return_tensors="pt"
                 )
-
 
         # Move inputs to device
         inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v
