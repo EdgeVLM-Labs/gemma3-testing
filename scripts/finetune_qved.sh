@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# QVED Finetuning Script for Mobile-VideoGPT-0.5B
-# This script performs Stage 3 (finetuning) only, using the pre-trained Mobile-VideoGPT-0.5B checkpoint
-# The checkpoint already includes pre-trained video and image projectors from Stages 1 and 2
+# Gemma-3N E2B Finetuning Script (Stage 3)
+# This script performs fine-tuning on the QVED dataset using google/gemma-3n-E2B
+# The model already has pretrained projectors for video and image processing
 
-# Environment setup
+# ===================== Environment Setup =====================
 export PYTHONPATH="./:$PYTHONPATH"
 export DATASET_DIR="$(pwd)/playground/data"
 
@@ -12,43 +12,34 @@ export DATASET_DIR="$(pwd)/playground/data"
 export PDSH_RCMD_TYPE=ssh
 
 # WandB Configuration
-export WANDB_PROJECT="mobile-videogpt"
+export WANDB_PROJECT="gemma3n-finetune"
 export WANDB_ENTITY="fyp-21"
-export WANDB_NAME="qved-finetune-$(date +%Y%m%d_%H%M%S)"
+export WANDB_NAME="gemma3n-E2B-finetune-$(date +%Y%m%d_%H%M%S)"
 
-# Model paths - using pre-trained Mobile-VideoGPT-0.5B checkpoint
-BASE_LLM_PATH="Amshaker/Mobile-VideoGPT-0.5B"
+# ===================== Model Paths =====================
+BASE_LLM_PATH="google/gemma-3n-E2B"
 VISION_TOWER="OpenGVLab/VideoMamba"
 IMAGE_VISION_TOWER="openai/clip-vit-base-patch16"
 PROJECTOR_TYPE="etp"
 
 # Output directory for finetuned model
-OUTPUT_DIR_PATH="results/qved_finetune_mobilevideogpt_0.5B"
+OUTPUT_DIR_PATH="results/gemma3n_E2B_finetune"
 
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR_PATH"
 
-# Training hyperparameters optimized for small dataset
-# EPOCHS=3                     # Reduced epochs
-# LR=2e-4                      # Increased learning rate
-# MM_PROJ_LR=2e-4              # Even lower for projection layers
-# LORA_R=64                    # LoRA rank
-# LORA_ALPHA=128               # LoRA alpha
-# BATCH=16                      # Smaller batch for stability
-# GACC=4                      # Gradient accumulation to simulate batch=64
-# MAXLEN=2048                  # Max sequence length
-
-EPOCHS=3                     # Reduced epochs
-LR=2e-4                      # Increased learning rate
-MM_PROJ_LR=1e-4              # Even lower for projection layers
-LORA_R=64                    # LoRA rank
-LORA_ALPHA=128               # LoRA alpha
-BATCH=8                      # Per device batch size
-GACC=8                       # Gradient accumulation to simulate batch=64
-MAXLEN=2048                  # Max sequence length
+# ===================== Training Hyperparameters =====================
+EPOCHS=3                     # Reduced epochs for small dataset
+LR=2e-4                      # Learning rate
+MM_PROJ_LR=1e-4              # Projection layer LR
+LORA_R=64                     # LoRA rank
+LORA_ALPHA=128                # LoRA alpha
+BATCH=8                       # Per device batch size
+GACC=8                        # Gradient accumulation to simulate effective batch of 64
+MAXLEN=2048                   # Max sequence length
 
 echo "========================================="
-echo "QVED Dataset Finetuning Configuration"
+echo "Gemma-3N E2B Finetuning Configuration"
 echo "========================================="
 echo "Base Model: $BASE_LLM_PATH"
 echo "Output Dir: $OUTPUT_DIR_PATH"
@@ -57,7 +48,7 @@ echo "Learning Rate: $LR"
 echo "Batch Size: $BATCH x $GACC accumulation steps = effective batch of $((BATCH * GACC))"
 echo "========================================="
 
-# Save hyperparameters to a config file
+# ===================== Save Hyperparameters =====================
 CONFIG_FILE="$OUTPUT_DIR_PATH/hyperparameters.json"
 cat <<EOF > "$CONFIG_FILE"
 {
@@ -78,21 +69,16 @@ cat <<EOF > "$CONFIG_FILE"
 EOF
 echo "Hyperparameters saved to $CONFIG_FILE"
 
-# Stage 3: Fine-tuning on QVED dataset
-# The Mobile-VideoGPT-0.5B checkpoint already includes trained projectors,
-# so we don't need to specify pretrain_mm_mlp_adapter or pretrain_image_mm_mlp_adapter
-#
-# Note: Using ZeRO-2 instead of ZeRO-3 due to Mamba SSM compatibility issues
-# ZeRO-3 causes tensor initialization errors with mamba_ssm modules
-
-deepspeed mobilevideogpt/train/train.py \
+# ===================== Stage 3: Fine-tuning =====================
+# Note: ZeRO-2 used for Mamba compatibility
+deepspeed train/train.py \
   --deepspeed scripts/zero2.json \
   --lora_enable True \
   --lora_r $LORA_R \
   --lora_alpha $LORA_ALPHA \
   --mm_projector_lr $MM_PROJ_LR \
   --model_name_or_path "$BASE_LLM_PATH" \
-  --version qwen2_instruct \
+  --version gemma3n_E2B \
   --dataset_use QVED_TRAIN \
   --dataset_val QVED_VAL \
   --vision_tower "$VISION_TOWER" \
