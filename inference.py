@@ -1,72 +1,123 @@
-import sys
 import os
+import sys
 import warnings
 import logging
-
-os.environ['PYTHONWARNINGS'] = 'ignore'
-warnings.filterwarnings("ignore")
-
-logging.getLogger('mmengine').setLevel(logging.CRITICAL)
-logging.getLogger('transformers').setLevel(logging.CRITICAL)
-logging.getLogger('transformers.modeling_utils').setLevel(logging.CRITICAL)
-
-import torch
 from pathlib import Path
 from PIL import Image
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
+import torch
 
-sys.path.append("Mobile-VideoGPT")
+# -----------------------------
+# Suppress warnings & logs
+# -----------------------------
+os.environ['PYTHONWARNINGS'] = 'ignore'
+warnings.filterwarnings("ignore")
+logging.getLogger('mmengine').setLevel(logging.CRITICAL)
+logging.getLogger('transformers').setLevel(logging.CRITICAL)
 
-from mobilevideogpt.utils import preprocess_input
+# -----------------------------
+# Gemma3N imports
+# -----------------------------
+from unsloth import FastModel
+from transformers import TextStreamer
 
-def load_model(pretrained_path: str, device: str = "cuda"):
-    """Loads the pre-trained model and tokenizer."""
-    config = AutoConfig.from_pretrained(pretrained_path)
-    tokenizer = AutoTokenizer.from_pretrained(pretrained_path, use_fast=False)
-    model = AutoModelForCausalLM.from_pretrained(
-        pretrained_path,
-        config=config,
-        torch_dtype=torch.float16
+# -----------------------------
+# Video processing
+# -----------------------------
+import cv2
+
+def extract_frames(video_path, num_frames=8):
+    """Extracts 'num_frames' evenly spaced frames from a video."""
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Cannot open video: {video_path}")
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    indices = [int(i * total_frames / num_frames) for i in range(num_frames)]
+    frames = []
+
+    for idx in indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        frames.append(img)
+
+    cap.release()
+    return frames
+
+# -----------------------------
+# Model Loading
+# -----------------------------
+def load_model(model_name="unsloth/gemma-3n-E2B", device="cuda"):
+    """Load Gemma3N E2B model."""
+    model, tokenizer = FastModel.from_pretrained(
+        model_name=model_name,
+        dtype=None,          # auto-detect
+        max_seq_length=1024,
+        load_in_4bit=False,  # full precision
+        full_finetuning=False
     )
     model.to(device)
     return model, tokenizer
 
+# -----------------------------
+# Inference Function
+# -----------------------------
+def run_inference(model, tokenizer, video_path, prompt, max_new_tokens=256):
+    """Run Gemma3N inference on a video with a text prompt."""
+    frames = extract_frames(video_path, num_frames=8)
+    
+    # Prepare messages for Gemma3N
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                *[{"type": "image", "image": img} for img in frames],
+                {"type": "text", "text": prompt}
+            ],
+        }
+    ]
 
-def run_inference(model, tokenizer, video_path: str, prompt: str):
-    """Runs inference on the given video file."""
-    input_ids, video_frames, context_frames, stop_str = preprocess_input(
-        model, tokenizer, video_path, prompt
-    )
+    # Tokenize and generate output
+    inputs = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt",
+    ).to("cuda")
 
+    streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
     with torch.inference_mode():
         output_ids = model.generate(
-            input_ids,
-            images=torch.stack(video_frames, dim=0).half().cuda(),
-            context_images=torch.stack(context_frames, dim=0).half().cuda(),
-            do_sample=False,  # Use greedy decoding
-            # temperature=0,
-            # top_p=1,
-            num_beams=1,
-            max_new_tokens=1024,
-            use_cache=True,
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            temperature=0.1,
+            do_sample=True,
+            streamer=streamer
         )
 
-    outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
-    if outputs.endswith(stop_str):
-        outputs = outputs[:-len(stop_str)].strip()
+    # Convert to text
+    response = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    return response
 
-    return outputs
-
-
+# -----------------------------
+# Main
+# -----------------------------
 def main():
-    pretrained_path = "Amshaker/Mobile-VideoGPT-0.5B"
+    pretrained_model = "unsloth/gemma-3n-E2B"
     video_path = "sample_videos/00000340.mp4"
-    prompt = "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend?"
-    model, tokenizer = load_model(pretrained_path)
+    prompt = (
+        "You are an assistive navigation system for a visually impaired user. "
+        "Analyze the provided video from the user's forward perspective. "
+        "Identify all the immediate, high-risk obstructions and provide a single, actionable safety alert."
+    )
+
+    model, tokenizer = load_model(pretrained_model)
     output = run_inference(model, tokenizer, video_path, prompt)
-    print("🤖 Mobile-VideoGPT Output: ", output)
+    print("🤖 Gemma3N-E2B Output:\n", output)
 
 
 if __name__ == "__main__":
     main()
-
