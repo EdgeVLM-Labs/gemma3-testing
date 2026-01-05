@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-QVED Finetuned Model Inference
+QVED Inference with Google/Gemma-3n-E2B
 
-This script runs inference on a single video using a finetuned Mobile-VideoGPT model.
+This script runs inference on a single video using the Google/Gemma-3n-E2B
+Mobile-VideoGPT model (or a finetuned LoRA adapter based on it).
 
 Usage:
-    python utils/infer_qved.py --model_path results/qved_finetune_mobilevideogpt_0.5B --video_path sample_videos/00000340.mp4
-    python utils/infer_qved.py --model_path Amshaker/Mobile-VideoGPT-0.5B --video_path sample_videos/00000340.mp4 --prompt "Describe this video"
+    python infer_qved_gemma.py \
+        --video_path sample_videos/00000340.mp4 \
+        --prompt "Describe this video"
 """
 
 import sys
@@ -16,7 +18,6 @@ import logging
 import argparse
 
 os.environ['PYTHONWARNINGS'] = 'ignore'
-
 warnings.filterwarnings("ignore")
 
 logging.getLogger('mmengine').setLevel(logging.CRITICAL)
@@ -30,34 +31,22 @@ from peft import PeftModel
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from mobilevideogpt.utils import preprocess_input
 
 
-def load_model(pretrained_path: str, device: str = "cuda", base_model: str = "Amshaker/Mobile-VideoGPT-0.5B"):
-    """Loads the pre-trained model and tokenizer.
-
-    Args:
-        pretrained_path: Path to finetuned model (can be checkpoint or base dir with LoRA adapters)
-        device: Device to load model on
-        base_model: Base model to use when loading LoRA adapters
-    """
-    # Check if this is a LoRA checkpoint or full model
+def load_model(pretrained_path: str, device: str = "cuda", base_model: str = "google/gemma-3n-E2B"):
+    """Loads the pre-trained model and tokenizer."""
     is_lora_checkpoint = False
     adapter_path = pretrained_path
 
-    # If it's a checkpoint-* directory, it contains LoRA adapters
-    if "checkpoint-" in pretrained_path:
-        is_lora_checkpoint = True
-    # If it's the base finetuning dir, check for adapter files
-    elif os.path.exists(os.path.join(pretrained_path, "adapter_config.json")):
+    # Detect if path contains LoRA adapters
+    if "checkpoint-" in pretrained_path or os.path.exists(os.path.join(pretrained_path, "adapter_config.json")):
         is_lora_checkpoint = True
 
     if is_lora_checkpoint:
         print(f"Loading LoRA adapters from: {adapter_path}")
         print(f"Base model: {base_model}")
 
-        # Load base model first
         config = AutoConfig.from_pretrained(base_model)
         tokenizer = AutoTokenizer.from_pretrained(base_model, use_fast=False)
         model = AutoModelForCausalLM.from_pretrained(
@@ -65,12 +54,10 @@ def load_model(pretrained_path: str, device: str = "cuda", base_model: str = "Am
             config=config,
             torch_dtype=torch.float16
         )
-
-        # Load LoRA adapters
         model = PeftModel.from_pretrained(model, adapter_path)
-        model = model.merge_and_unload()  # Merge LoRA weights into base model
+        model = model.merge_and_unload()
     else:
-        # Load full model directly
+        print(f"Loading full model from: {pretrained_path}")
         config = AutoConfig.from_pretrained(pretrained_path)
         tokenizer = AutoTokenizer.from_pretrained(pretrained_path, use_fast=False)
         model = AutoModelForCausalLM.from_pretrained(
@@ -94,7 +81,7 @@ def run_inference(model, tokenizer, video_path: str, prompt: str, device: str = 
             input_ids,
             images=torch.stack(video_frames, dim=0).half().to(device),
             context_images=torch.stack(context_frames, dim=0).half().to(device),
-            do_sample=False,  # Use greedy decoding
+            do_sample=False,
             num_beams=1,
             max_new_tokens=max_new_tokens,
             use_cache=True,
@@ -108,11 +95,11 @@ def run_inference(model, tokenizer, video_path: str, prompt: str, device: str = 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="QVED Finetuned Model Inference")
+    parser = argparse.ArgumentParser(description="QVED Inference with Google/Gemma-3n-E2B")
     parser.add_argument(
         "--model_path",
         type=str,
-        default="Amshaker/Mobile-VideoGPT-0.5B",
+        default="google/gemma-3n-E2B",
         help="Path to the model (HuggingFace model ID or local checkpoint directory)"
     )
     parser.add_argument(
@@ -142,7 +129,7 @@ def main():
     parser.add_argument(
         "--base_model",
         type=str,
-        default="Amshaker/Mobile-VideoGPT-0.5B",
+        default="google/gemma-3n-E2B",
         help="Base model to use when loading LoRA adapters"
     )
 
@@ -150,10 +137,6 @@ def main():
 
     if not os.path.exists(args.video_path):
         print(f"❌ Error: Video file not found: {args.video_path}")
-        sys.exit(1)
-
-    if not args.model_path.startswith("Amshaker/") and not args.model_path.startswith("EdgeVLM-Labs/") and not os.path.exists(args.model_path):
-        print(f"❌ Error: Model path not found: {args.model_path}")
         sys.exit(1)
 
     print(f"📦 Loading model from: {args.model_path}")
@@ -175,6 +158,7 @@ def main():
     print("🤖 Mobile-VideoGPT Output:")
     print(output)
     print("="*80)
+
 
 if __name__ == "__main__":
     main()
