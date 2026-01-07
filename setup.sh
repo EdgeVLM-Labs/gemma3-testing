@@ -40,6 +40,22 @@ echo "🦥 Ensuring unsloth compatibility..."
 pip install --upgrade unsloth>=2026.1.2 peft>=0.17.0,<=0.18.0
 
 # ----------------------------
+# Optional: Install specific versions for Float8 quantization (Unsloth LoRA fine-tuning)
+# Uncomment these lines if you need Float8WeightOnlyConfig support:
+# ----------------------------
+# echo "⚡ Installing torch/torchao for Float8 quantization..."
+# pip install --upgrade --force-reinstall \
+#   "torch==2.6.0+cu121" \
+#   "torchvision==0.21.0+cu121" \
+#   "torchaudio==2.6.0+cu121" \
+#   --index-url https://download.pytorch.org/whl/cu121
+# pip install --upgrade --pre torchao==0.6.0.dev20241205 \
+#   --index-url https://download.pytorch.org/whl/cu121
+# pip install --no-deps --upgrade git+https://github.com/unslothai/unsloth.git
+# python -c "from torchao.quantization import Float8WeightOnlyConfig; print('✅ Float8 quantization available')"
+
+
+# ----------------------------
 # Video augmentation: VidAug
 # ----------------------------
 echo "🎥 Installing VidAug..."

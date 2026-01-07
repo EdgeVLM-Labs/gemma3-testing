@@ -71,6 +71,9 @@ conda activate gemma3n
 # Fine-tune on QVED dataset
 bash scripts/finetune_qved.sh
 
+# Run LoRA fine-tuning with Unsloth
+bash scripts/finetune_gemma3n_unsloth.sh
+
 # Run inference on videos
 python gemma3n_batch_inference.py \
   --model google/gemma-3n-E2B \
@@ -369,6 +372,36 @@ bash scripts/finetune_qved.sh
 
 ---
 
+### Unsloth LoRA Fine-tuning (Gemma-3N-E4B-It)
+
+```bash
+# Ensure dependencies expose Float8 quantization support
+pip install --upgrade --force-reinstall \
+  "torch==2.6.0+cu121" \
+  "torchvision==0.21.0+cu121" \
+  "torchaudio==2.6.0+cu121" \
+  --index-url https://download.pytorch.org/whl/cu121
+
+pip install --upgrade --pre torchao==0.6.0.dev20241205 \
+  --index-url https://download.pytorch.org/whl/cu121
+
+pip install --no-deps --upgrade git+https://github.com/unslothai/unsloth.git
+
+# Optional: verify Float8 APIs exist
+python -c "from torchao.quantization import Float8WeightOnlyConfig"
+
+# Run SFT with LoRA adapters
+bash scripts/finetune_gemma3n_unsloth.sh
+```
+
+Key files:
+- [gemma3_finetune_unsloth.py](gemma3_finetune_unsloth.py) orchestrates dataset loading, LoRA configuration, and SFTTrainer.
+- [scripts/finetune_gemma3n_unsloth.sh](scripts/finetune_gemma3n_unsloth.sh) wraps environment checks and launches training.
+
+The script expects `dataset.py prepare` output and logs metrics to Weights & Biases if `WANDB_PROJECT` is set.
+
+---
+
 ## 📈 Evaluation
 
 ### Run Test Set Inference
@@ -579,21 +612,38 @@ pip install -r requirements.txt --force-reinstall
 python -c "import unsloth; import peft; print(f'Unsloth: {unsloth.__version__}, PEFT: {peft.__version__}')"
 ```
 
+**Float8WeightOnlyConfig Missing (torchao):**
+```bash
+pip install --upgrade --force-reinstall \
+  "torch==2.6.0+cu121" \
+  "torchvision==0.21.0+cu121" \
+  "torchaudio==2.6.0+cu121" \
+  --index-url https://download.pytorch.org/whl/cu121
+
+pip install --upgrade --pre torchao==0.6.0.dev20241205 \
+  --index-url https://download.pytorch.org/whl/cu121
+
+pip install --no-deps --upgrade git+https://github.com/unslothai/unsloth.git
+
+python -c "from torchao.quantization import Float8WeightOnlyConfig"
+```
+These builds expose Float8 quantization APIs required by transformers and Unsloth LoRA fine-tuning.
+
 **Mamba-SSM Installation Fails (for training):**
 ```bash
 # Note: Only needed for training with mobilevideogpt architecture
 # Inference uses unsloth which doesn't require mamba-ssm
 
-# Step 1: Reinstall PyTorch with CUDA 12.1
 pip uninstall -y torch torchvision torchaudio
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-# Step 2: Clean install mamba-ssm
-pip uninstall -y mamba-ssm
+pip uninstall mamba-ssm
+
 pip cache purge
+
 pip install mamba-ssm --no-cache-dir --no-build-isolation
 
-# Step 3: Verify installation
+# Verify installation
 python -c "import mamba_ssm; print('mamba-ssm installed successfully')"
 ```
 
@@ -634,6 +684,7 @@ bash scripts/verify_qved_setup.sh
 | `utils/generate_test_report.py` | Generate evaluation report |
 | `utils/hf_upload.py` | Upload model to HF Hub |
 | `scripts/initialize_dataset.sh` | Setup + fine-tuning |
+| `scripts/finetune_gemma3n_unsloth.sh` | Unsloth LoRA fine-tuning for Gemma-3N |
 | `scripts/run_inference.sh` | Test inference + evaluation |
 
 ---
