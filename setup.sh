@@ -34,6 +34,12 @@ echo "🧱 Installing base packages..."
 pip install -r requirements.txt
 
 # ----------------------------
+# Ensure unsloth and peft compatibility
+# ----------------------------
+echo "🦥 Ensuring unsloth compatibility..."
+pip install --upgrade unsloth>=2026.1.2 peft>=0.17.0,<=0.18.0
+
+# ----------------------------
 # Video augmentation: VidAug
 # ----------------------------
 echo "🎥 Installing VidAug..."
