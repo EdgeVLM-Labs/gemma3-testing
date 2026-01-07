@@ -126,6 +126,26 @@ Filters videos based on:
 - Sharpness (min score 50)
 - Motion detection (for dynamic exercises)
 
+### Usage Examples
+
+```bash
+# Download dataset
+python dataset.py download                    # Download 5 videos/class
+python dataset.py download --max-per-class 10 # Download 10 videos/class
+
+# Prepare splits
+python dataset.py prepare                     # Create train/val/test splits
+
+# Clean dataset
+python dataset.py clean                       # Filter low-quality videos
+
+# Run all steps
+python dataset.py all                         # Download → Prepare → Clean
+
+# Get help
+python dataset.py --help                      # Show all options
+```
+
 ---
 
 ## 🎯 Model Inference
