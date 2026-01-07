@@ -2,6 +2,80 @@
 
 This repository provides tools for fine-tuning and inference with **Google Gemma-3N-E2B** models for video understanding tasks, with a focus on exercise form analysis and assistive navigation for visually impaired users.
 
+---
+
+## 🎯 Quick Start
+
+**📋 New users: See [Setup Checklist](docs/SETUP_CHECKLIST.md) for a step-by-step guide with checkboxes!**
+
+### Prerequisites
+- Linux/macOS (Ubuntu 20.04+ recommended)
+- NVIDIA GPU with CUDA support (16GB+ VRAM recommended)
+- 50GB+ free disk space
+- Root/sudo access for system packages
+- Git and basic command line knowledge
+
+### Initial Setup (First Time)
+
+```bash
+# 1. Install system dependencies (Ubuntu/Debian)
+sudo apt-get update
+sudo apt-get install -y wget git build-essential
+
+# 2. Clone the repository
+git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
+cd gemma3-testing
+
+# 3. Run automated setup script (installs Miniconda, creates environment, installs dependencies)
+bash setup.sh
+
+# 4. Activate the environment
+conda activate gemma3n
+
+# 5. Accept Conda Terms of Service (required for setup)
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+# 6. Login to Hugging Face (required for gated models)
+huggingface-cli login
+# Or: hf auth login
+# You'll need to:
+#   - Create account at https://huggingface.co
+#   - Generate token at https://huggingface.co/settings/tokens
+#   - Request access to google/gemma-3n-E2B model
+
+# 7. Download and prepare dataset
+python dataset.py download          # Download 5 videos per exercise class
+python dataset.py prepare           # Create train/val/test splits
+
+# 8. Verify setup
+bash scripts/verify_qved_setup.sh
+
+# 9. (Optional) Run quick inference test
+python gemma3n_batch_inference.py \
+  --model unsloth/gemma-3n-E4B-it \
+  --video_folder sample_videos \
+  --output results/test.csv
+```
+
+### Daily Usage (After Initial Setup)
+
+```bash
+# Activate environment
+conda activate gemma3n
+
+# Fine-tune on QVED dataset
+bash scripts/finetune_qved.sh
+
+# Run inference on videos
+python gemma3n_batch_inference.py \
+  --model google/gemma-3n-E2B \
+  --video_folder your_videos/ \
+  --output results.csv
+```
+
+---
+
 ## 🚀 Features
 
 - **Gemma-3N-E2B implementation** with dedicated folder structure
@@ -66,38 +140,69 @@ See [gemma3/README.md](gemma3/README.md) and [gemma3/docs/ARCHITECTURE.md](gemma
 
 ---
 
-## 🛠️ Installation
+## 🛠️ Detailed Installation
 
-### 1. Environment Setup
+### Option 1: Automated Setup (Recommended)
 
 ```bash
-# Run the complete setup (installs Miniconda, creates env, installs dependencies)
+# Install system dependencies (Ubuntu/Debian)
+sudo apt-get update
+sudo apt-get install -y wget git build-essential
+
+# Clone repository
+git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
+cd gemma3-testing
+
+# Run complete setup (installs Miniconda, creates env, installs dependencies)
 bash setup.sh
+
+# Activate environment
+conda activate gemma3n
 ```
 
-Or manually:
+### Option 2: Manual Setup
 
 ```bash
+# Install system dependencies (Ubuntu/Debian)
+sudo apt-get update
+sudo apt-get install -y wget git build-essential
+
+# Clone repository
+git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
+cd gemma3-testing
+
 # Create conda environment
 conda create -n gemma3n python=3.11 -y
 conda activate gemma3n
 
 # Install dependencies
 pip install -r requirements.txt
-```
 
-### 2. Accept Conda Terms of Service
-
-```bash
+# Accept Conda ToS (if needed)
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 ```
 
-### 3. Login to Hugging Face
+### Post-Installation Steps
 
 ```bash
+# 1. Login to Hugging Face
 hf auth login
 # Or set token:
+export HF_TOKEN=your_token_here
+
+# 2. Request access to Gemma-3N-E2B
+# Visit: https://huggingface.co/google/gemma-3n-E2B
+# Click "Request Access" and accept terms
+
+# 3. Verify GPU availability
+nvidia-smi
+
+# 4. Test Python environment
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+```
+
+---
 export HF_TOKEN=your_token_here
 ```
 
@@ -327,34 +432,144 @@ Generates:
 
 ## 🔍 Troubleshooting
 
-### Out of Disk Space
+### Initial Setup Issues
 
+**System Dependencies Missing:**
+```bash
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install -y wget git build-essential
+
+# CentOS/RHEL
+sudo yum install -y wget git gcc gcc-c++ make
+
+# macOS (requires Homebrew)
+brew install wget git
+xcode-select --install
+```
+
+**Git Clone Fails:**
+```bash
+# If HTTPS fails, try SSH
+git clone git@github.com:EdgeVLM-Labs/gemma3-testing.git
+
+# Or download ZIP
+wget https://github.com/EdgeVLM-Labs/gemma3-testing/archive/refs/heads/main.zip
+unzip main.zip
+```
+
+**Setup Script Fails:**
+```bash
+# Make script executable
+chmod +x setup.sh
+
+# Run with bash explicitly
+bash setup.sh
+
+# Check for errors in output
+bash setup.sh 2>&1 | tee setup.log
+```
+
+**Conda Environment Not Found:**
+```bash
+# Source conda
+source ~/miniconda3/etc/profile.d/conda.sh
+
+# Or add to ~/.bashrc
+echo 'source ~/miniconda3/etc/profile.d/conda.sh' >> ~/.bashrc
+source ~/.bashrc
+
+# Then activate
+conda activate gemma3n
+```
+
+**Python Module Not Found:**
+```bash
+# Reinstall requirements
+conda activate gemma3n
+pip install -r requirements.txt --force-reinstall
+
+# Or install individually
+pip install torch transformers unsloth peft
+```
+
+### Runtime Issues
+
+**Out of Disk Space:**
 ```bash
 # Clean HF cache
 rm -rf ~/.cache/huggingface/hub/*
+
+# Clean conda cache
+conda clean --all
 
 # Check disk usage
 df -h
 ```
 
-### Gated Model Access (403 Error)
-
+**Gated Model Access (403 Error):**
 ```bash
 # 1. Request access at https://huggingface.co/google/gemma-3n-E2B
-# 2. Accept terms
-# 3. Login
+# 2. Accept terms (wait for approval email)
+# 3. Login with your token
 hf auth login
 
-# Or use public mirror
+# Alternative: Use public mirror
 --model unsloth/gemma-3n-E2B
 ```
 
-### PEFT Import Error
-
+**CUDA Out of Memory:**
 ```bash
-# Upgrade PEFT
-pip install --upgrade peft
+# Reduce batch size in scripts/finetune_qved.sh
+BATCH=4  # instead of 8
+
+# Or increase gradient accumulation
+GACC=16  # instead of 8
+
+# Clear CUDA cache
+python -c "import torch; torch.cuda.empty_cache()"
 ```
+
+**PEFT Import Error:**
+```bash
+# Upgrade PEFT (needs >=0.11.0)
+pip install --upgrade peft
+
+# Verify version
+python -c "import peft; print(peft.__version__)"
+```
+
+**Mamba-SSM Installation Fails:**
+```bash
+# Ensure PyTorch is installed first
+pip install torch
+
+# Then install mamba-ssm
+pip install mamba-ssm==1.2.0
+
+# If still fails, try with --no-cache-dir
+pip install --no-cache-dir mamba-ssm==1.2.0
+```
+
+**Dataset Not Found:**
+```bash
+# Verify dataset exists
+ls -la dataset/
+
+# Re-download if needed
+python dataset.py download
+python dataset.py prepare
+
+# Check video paths
+bash scripts/verify_qved_setup.sh
+```
+
+### Need More Help?
+
+- Check [docs/issues.md](docs/issues.md) for known issues
+- See [gemma3/docs/ARCHITECTURE.md](gemma3/docs/ARCHITECTURE.md) for technical details
+- Review [docs/QUICKSTART.md](docs/QUICKSTART.md) for step-by-step guide
+- Open an issue on GitHub: https://github.com/EdgeVLM-Labs/gemma3-testing/issues
 
 ---
 
