@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-QVED Inference with Google/Gemma-3n-E2B (Unsloth)
+QVED Inference with Google/Gemma-3n (Unsloth)
 
-This script runs inference on a single video using the Google/Gemma-3n-E2B
-model via Unsloth FastModel.
+This script runs inference on a single video using the Google/Gemma-3n model via Unsloth FastModel.
+Based on the working batch inference approach.
 
 Usage:
-    python infer_qved.py \
+    python utils/infer_qved.py \
+        --model_path unsloth/gemma-3n-E4B-it \
         --video_path sample_videos/00000340.mp4 \
-        --prompt "Describe this video"
+        --prompt "Analyze the exercise form shown in this video"
 """
 
 import os
@@ -45,13 +46,13 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
     cap = cv2.VideoCapture(str(video_path))
 
     if not cap.isOpened():
-        print(f"  ⚠️  Error: Could not open video file {video_path}")
+        print(f"❌ Error: Could not open video file {video_path}")
         return []
 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     if total_frames <= 0:
-        print(f"  ⚠️  Error: Video has no frames {video_path}")
+        print(f"❌ Error: Video has no frames {video_path}")
         return []
     
     # Calculate the step size
@@ -70,6 +71,7 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
         frames.append(img)
 
     cap.release()
+    print(f"✅ Extracted {len(frames)} frames from video")
     return frames
 
 
@@ -89,80 +91,38 @@ def load_model(model_name: str = "unsloth/gemma-3n-E4B-it", device: str = "cuda"
     )
     
     model.to(device)
-    print("✅ Model loaded successfully!")
+    print("✅ Model loaded successfully!\n")
     return model, tokenizer
 
 
-def run_inference(
+def do_inference(
     model,
     tokenizer,
-    video_path: str,
-    prompt: str,
-    device: str = "cuda",
-    num_frames: int = 8,
-    max_new_tokens: int = 512,
+    messages: List[dict],
+    max_new_tokens: int = 128,
     show_stream: bool = False
 ) -> str:
     """
-    Run inference on a video file.
+    Run inference on Gemma-3N model with chat messages.
     
     Args:
         model: The loaded model
         tokenizer: The tokenizer
-        video_path: Path to video file
-        prompt: Text prompt for inference
-        device: Device to use (cuda/cpu)
-        num_frames: Number of frames to extract
+        messages: List of message dicts with role/content
         max_new_tokens: Maximum tokens to generate
         show_stream: Whether to show streaming output
     
     Returns:
         Generated response text
     """
-    # Extract frames
-    video_frames = extract_frames(video_path, num_frames=num_frames)
-    
-    if not video_frames:
-        return "ERROR: Could not extract frames from video"
-
-    # Build the message
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                *[{"type": "image", "image": img} for img in video_frames],
-                {"type": "text", "text": prompt}
-            ],
-        },
-    ]
-
-    # Try to use chat template if available, otherwise use direct processing
-    try:
-        # Check if tokenizer has chat template
-        if hasattr(tokenizer, 'chat_template') and tokenizer.chat_template:
-            inputs = tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=True,
-                return_dict=True,
-                return_tensors="pt",
-            ).to(device)
-        else:
-            raise ValueError("No chat template available")
-    except (ValueError, AttributeError):
-        # Fallback: direct processing with images
-        print("⚠️  Chat template not available, using direct processing...")
-        text_prompt = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-        
-        # Process with images
-        inputs = tokenizer(
-            text=text_prompt,
-            images=video_frames,
-            return_tensors="pt",
-            padding=True,
-        )
-        # Move all tensors to device
-        inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+    # Prepare inputs
+    inputs = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt",
+    ).to("cuda")
 
     # Generate
     streamer = TextStreamer(tokenizer, skip_prompt=True) if show_stream else None
@@ -176,13 +136,7 @@ def run_inference(
     )
 
     # Decode only the NEW tokens (the answer)
-    if 'input_ids' in inputs:
-        input_length = inputs['input_ids'].shape[1]
-    elif hasattr(inputs, 'input_ids'):
-        input_length = inputs.input_ids.shape[1]
-    else:
-        input_length = 0
-        
+    input_length = inputs.input_ids.shape[1]
     new_tokens = outputs[0][input_length:]
     response_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
 
@@ -191,14 +145,14 @@ def run_inference(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="QVED Inference with Google/Gemma-3n-E2B (Unsloth)",
-        epilog="Note: For best results, use 'unsloth/gemma-3n-E4B-it' which includes proper chat templates."
+        description="QVED Inference with Google/Gemma-3n (Unsloth)",
+        epilog="Example: python utils/infer_qved.py --model_path unsloth/gemma-3n-E4B-it --video_path sample_videos/00000340.mp4"
     )
     parser.add_argument(
         "--model_path",
         type=str,
         default="unsloth/gemma-3n-E4B-it",
-        help="Path to the model (HuggingFace model ID). Recommended: unsloth/gemma-3n-E4B-it or unsloth/gemma-3n-E2B-it"
+        help="HuggingFace model ID (e.g., unsloth/gemma-3n-E4B-it, unsloth/gemma-3n-E2B-it)"
     )
     parser.add_argument(
         "--video_path",
@@ -242,28 +196,54 @@ def main():
         print(f"❌ Error: Video file not found: {args.video_path}")
         return
 
+    print("="*80)
+    print("QVED Inference - Gemma-3N Video Analysis")
+    print("="*80 + "\n")
+
     # Load model
     model, tokenizer = load_model(args.model_path, device=args.device)
 
+    # Extract frames
     print(f"🎥 Processing video: {args.video_path}")
-    print(f"💬 Prompt: {args.prompt}")
-    print("\n" + "="*80)
+    video_frames = extract_frames(args.video_path, num_frames=args.num_frames)
+    
+    if not video_frames:
+        print("❌ Failed to extract frames from video")
+        return
+
+    # Build messages
+    print(f"💬 Prompt: {args.prompt}\n")
+    print("="*80)
+    
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                *[{"type": "image", "image": img} for img in video_frames],
+                {"type": "text", "text": args.prompt}
+            ],
+        },
+    ]
 
     # Run inference
-    output = run_inference(
-        model,
-        tokenizer,
-        args.video_path,
-        args.prompt,
-        device=args.device,
-        num_frames=args.num_frames,
-        max_new_tokens=args.max_new_tokens,
-        show_stream=args.show_stream
-    )
+    try:
+        output = do_inference(
+            model,
+            tokenizer,
+            messages,
+            max_new_tokens=args.max_new_tokens,
+            show_stream=args.show_stream
+        )
 
-    print("🤖 Gemma-3N Output:")
-    print(output)
-    print("="*80)
+        if not args.show_stream:
+            print("🤖 Gemma-3N Output:")
+            print(output)
+        print("="*80)
+        
+    except Exception as e:
+        print(f"❌ Error during inference: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
