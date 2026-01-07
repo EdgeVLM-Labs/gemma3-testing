@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-Dataset Cleaning + Gemma3N-E2B Inference
+Dataset Cleaning Script
 
 Features:
 - Checks video quality (resolution, brightness, sharpness, motion)
 - Copies only good videos to a cleaned dataset
 - Keeps folder structure
-- Optionally runs Gemma3N-E2B inference on accepted videos
 - Creates:
-    - cleaning_report.csv
-    - exercise_analysis_report.csv
-    - rejected_videos.json
+    - cleaning_report.csv  → Summary per exercise
+    - exercise_analysis_report.csv  → Detailed per-file metrics, motion stats, and rejection reasons
 """
 
 import cv2
@@ -22,7 +20,6 @@ from pathlib import Path
 from tabulate import tabulate
 from tqdm import tqdm
 import json
-import torch
 
 # -------------------------------
 # Dataset paths

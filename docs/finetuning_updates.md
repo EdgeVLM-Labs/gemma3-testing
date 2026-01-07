@@ -73,7 +73,7 @@ If you need to regenerate `qved_train.json` from `ground_truth.json`:
 
 ```bash
 conda activate mobile_videogpt
-python utils/qved_from_fine_labels.py
+python dataset.py prepare
 ```
 
 This script:
@@ -177,7 +177,7 @@ If training can't find videos:
 
 1. Run verification: `bash scripts/verify_qved_setup.sh`
 2. Check video paths in `qved_train.json` match actual files
-3. Regenerate dataset: `python utils/qved_from_fine_labels.py`
+3. Regenerate dataset: `python dataset.py prepare`
 
 ### Model Not Downloading
 
