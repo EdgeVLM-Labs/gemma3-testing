@@ -22,7 +22,7 @@ conda create --name=gemma3n python=3.11 -y
 conda activate gemma3n
 
 pip install --upgrade pip
-
+pip install tqdm
 # ----------------------------
 # Base Python packages
 # ----------------------------
@@ -93,6 +93,7 @@ else:
 # ----------------------------
 # WandB & HuggingFace login
 # ----------------------------
+pip install wandb
 echo "🔑 Logging into WandB..."
 wandb login
 
@@ -101,4 +102,8 @@ hf auth login
 
 echo "✅ Setup complete!"
 echo "🚀 Gemma-3N E2B environment is ready."
+source ~/.bashrc
+
+pip install mamba-ssm==1.2.0
+
 source ~/.bashrc
