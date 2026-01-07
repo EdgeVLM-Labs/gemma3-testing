@@ -17,13 +17,15 @@ export WANDB_ENTITY="fyp-21"
 export WANDB_NAME="gemma3n-E2B-finetune-$(date +%Y%m%d_%H%M%S)"
 
 # ===================== Model Paths =====================
-BASE_LLM_PATH="google/gemma-3n-E2B"
+BASE_LLM_PATH="Amshaker/Mobile-VideoGPT-0.5B"  # Qwen2-based model (supported)
+# Note: google/gemma-3n-E2B is not yet supported in the training architecture
+# The training code supports Qwen2-based models like Mobile-VideoGPT
 VISION_TOWER="OpenGVLab/VideoMamba"
 IMAGE_VISION_TOWER="openai/clip-vit-base-patch16"
 PROJECTOR_TYPE="etp"
 
 # Output directory for finetuned model
-OUTPUT_DIR_PATH="results/gemma3n_E2B_finetune"
+OUTPUT_DIR_PATH="results/mobilevideogpt_0.5B_finetune"
 
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR_PATH"

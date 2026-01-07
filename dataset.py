@@ -520,6 +520,73 @@ def clean_dataset():
 
 
 # ============================================
+# Step 4: Copy Videos for Inference
+# ============================================
+def copy_for_inference(num_videos: int = 5, output_folder: str = "videos"):
+    """
+    Copy N random videos from dataset to a flat folder for batch inference.
+    
+    Args:
+        num_videos: Number of videos to copy (default: 5)
+        output_folder: Destination folder name (default: videos)
+    """
+    print(f"\n{'='*60}")
+    print(f"📋 Copying {num_videos} videos for batch inference")
+    print(f"{'='*60}\n")
+    
+    # Check if dataset exists
+    if not LOCAL_DIR.exists():
+        print(f"❌ Error: Dataset folder '{LOCAL_DIR}' not found.")
+        print("   Please run 'python dataset.py download' first.")
+        return
+    
+    # Collect all video files
+    video_files = []
+    for video_path in LOCAL_DIR.rglob(f"*{FILE_EXT}"):
+        if video_path.is_file():
+            video_files.append(video_path)
+    
+    if not video_files:
+        print(f"❌ Error: No video files found in '{LOCAL_DIR}'")
+        return
+    
+    print(f"✅ Found {len(video_files)} videos in dataset")
+    
+    # Sample random videos
+    num_to_copy = min(num_videos, len(video_files))
+    random.seed(RANDOM_SEED)
+    selected_videos = random.sample(video_files, num_to_copy)
+    
+    # Create output folder
+    output_path = Path(output_folder)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    # Copy videos
+    print(f"📂 Copying to: {output_path}/\n")
+    copied = []
+    
+    for i, video_src in enumerate(selected_videos, 1):
+        # Create unique filename: classname_originalname.mp4
+        class_name = video_src.parent.name
+        video_dst = output_path / f"{class_name}_{video_src.name}"
+        
+        try:
+            shutil.copy2(video_src, video_dst)
+            copied.append(str(video_dst))
+            print(f"  [{i}/{num_to_copy}] ✓ {video_src.name} → {video_dst.name}")
+        except Exception as e:
+            print(f"  [{i}/{num_to_copy}] ✗ Failed to copy {video_src.name}: {e}")
+    
+    print(f"\n{'='*60}")
+    print(f"✅ Copied {len(copied)}/{num_to_copy} videos to '{output_path}/'")
+    print(f"\nRun batch inference with:")
+    print(f"  python gemma3n_batch_inference.py \\")
+    print(f"    --video_folder {output_folder} \\")
+    print(f"    --output results/batch_results.csv")
+    print(f"{'='*60}")
+
+
+# ============================================
 # Main CLI
 # ============================================
 def main():
@@ -528,24 +595,39 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python dataset.py download              # Download 5 videos per class
+  python dataset.py download                    # Download 5 videos per class
   python dataset.py download --max-per-class 10
-  python dataset.py prepare               # Create train/val/test splits
-  python dataset.py clean                 # Filter low-quality videos
-  python dataset.py all                   # Run all steps
+  python dataset.py prepare                     # Create train/val/test splits
+  python dataset.py clean                       # Filter low-quality videos
+  python dataset.py copy                        # Copy 5 random videos to videos/
+  python dataset.py copy --num-videos 10        # Copy 10 videos
+  python dataset.py copy --output my_videos     # Copy to custom folder
+  python dataset.py all                         # Run all steps
         """
     )
     
     parser.add_argument(
         "command",
-        choices=["download", "prepare", "clean", "all"],
+        choices=["download", "prepare", "clean", "copy", "all"],
         help="Command to execute"
     )
     parser.add_argument(
         "--max-per-class",
         type=int,
         default=MAX_PER_CLASS,
-        help=f"Maximum videos per class (default: {MAX_PER_CLASS})"
+        help=f"Maximum videos per class for download (default: {MAX_PER_CLASS})"
+    )
+    parser.add_argument(
+        "--num-videos",
+        type=int,
+        default=5,
+        help="Number of videos to copy for inference (default: 5)"
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="videos",
+        help="Output folder for copied videos (default: videos)"
     )
 
     args = parser.parse_args()
@@ -556,6 +638,8 @@ Examples:
         prepare_dataset()
     elif args.command == "clean":
         clean_dataset()
+    elif args.command == "copy":
+        copy_for_inference(args.num_videos, args.output)
     elif args.command == "all":
         download_dataset(args.max_per_class)
         prepare_dataset()

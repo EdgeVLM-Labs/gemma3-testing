@@ -49,13 +49,16 @@ huggingface-cli login
 python dataset.py download          # Download 5 videos per exercise class
 python dataset.py prepare           # Create train/val/test splits
 
-# 8. Verify setup
+# 8. Copy videos for batch inference testing
+python dataset.py copy --num-videos 5  # Copy 5 videos to videos/ folder
+
+# 9. Verify setup
 bash scripts/verify_qved_setup.sh
 
-# 9. (Optional) Run quick inference test
+# 10. (Optional) Run quick inference test with Unsloth FastModel
 python gemma3n_batch_inference.py \
   --model unsloth/gemma-3n-E4B-it \
-  --video_folder sample_videos \
+  --video_folder videos \
   --output results/test.csv
 ```
 
@@ -265,6 +268,11 @@ python dataset.py download --max-per-class 10 # Download 10 videos/class
 # Prepare splits
 python dataset.py prepare                     # Create train/val/test splits
 
+# Copy videos for batch inference
+python dataset.py copy                        # Copy 5 random videos to videos/
+python dataset.py copy --num-videos 10        # Copy 10 videos
+python dataset.py copy --output my_videos     # Copy to custom folder
+
 # Clean dataset
 python dataset.py clean                       # Filter low-quality videos
 
@@ -284,32 +292,44 @@ python dataset.py --help                      # Show all options
 Using Unsloth FastModel (recommended):
 
 ```bash
-python gemma3n_batch_inference.py \
-  --model unsloth/gemma-3n-E4B-it \
-  --video_folder sample_videos \
-  --output results/batch_results.csv
-```
-
-### Single Video with Custom Model
-
-```bash
 python utils/infer_qved.py \
-  --model_path google/gemma-3n-E2B \
+  --model_path unsloth/gemma-3n-E4B-it \
   --video_path sample_videos/00000340.mp4 \
   --prompt "Analyze the exercise form shown in this video"
 ```
 
+Available models:
+- `unsloth/gemma-3n-E4B-it` - 4B parameter model (recommended)
+- `unsloth/gemma-3n-E2B-it` - 2B parameter model (faster)
+- `google/gemma-3n-E2B` - Original Google model (requires different setup)
+
 ### Batch Video Inference
 
-Process all videos in a folder:
+Process multiple videos at once:
 
+```bash
+# Step 1: Copy videos for inference
+python dataset.py copy --num-videos 5
+
+# Step 2: Run batch inference
+python gemma3n_batch_inference.py \
+  --model unsloth/gemma-3n-E4B-it \
+  --video_folder videos \
+  --output results/batch_results.csv \
+  --num_frames 8 \
+  --max_new_tokens 256
+
+# Step 3: View results
+cat results/batch_results.csv
+```
+
+**Custom prompt:**
 ```bash
 python gemma3n_batch_inference.py \
   --model unsloth/gemma-3n-E4B-it \
   --video_folder videos \
-  --output results/gemma3n_results.csv \
-  --num_frames 8 \
-  --max_new_tokens 256
+  --output results/batch_results.csv \
+  --prompt "Provide detailed feedback on exercise form and safety"
 ```
 
 ---
@@ -547,25 +567,34 @@ GACC=16  # instead of 8
 python -c "import torch; torch.cuda.empty_cache()"
 ```
 
-**PEFT Import Error:**
+**PEFT/Unsloth Import Error:**
 ```bash
-# Upgrade PEFT (needs >=0.11.0)
-pip install --upgrade peft
+# Unsloth requires specific versions
+pip install --upgrade "unsloth>=2026.1.2" "peft>=0.17.0,<=0.18.0"
 
-# Verify version
-python -c "import peft; print(peft.__version__)"
+# Or reinstall all requirements
+pip install -r requirements.txt --force-reinstall
+
+# Verify versions
+python -c "import unsloth; import peft; print(f'Unsloth: {unsloth.__version__}, PEFT: {peft.__version__}')"
 ```
 
-**Mamba-SSM Installation Fails:**
+**Mamba-SSM Installation Fails (for training):**
 ```bash
-# Ensure PyTorch is installed first
-pip install torch
+# Note: Only needed for training with mobilevideogpt architecture
+# Inference uses unsloth which doesn't require mamba-ssm
 
-# Then install mamba-ssm
-pip install mamba-ssm==1.2.0
+# Step 1: Reinstall PyTorch with CUDA 12.1
+pip uninstall -y torch torchvision torchaudio
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-# If still fails, try with --no-cache-dir
-pip install --no-cache-dir mamba-ssm==1.2.0
+# Step 2: Clean install mamba-ssm
+pip uninstall -y mamba-ssm
+pip cache purge
+pip install mamba-ssm --no-cache-dir --no-build-isolation
+
+# Step 3: Verify installation
+python -c "import mamba_ssm; print('mamba-ssm installed successfully')"
 ```
 
 **Dataset Not Found:**
@@ -594,8 +623,10 @@ bash scripts/verify_qved_setup.sh
 
 | Script | Purpose |
 |--------|---------|
-| `gemma3n_batch_inference.py` | Batch video inference with Unsloth |
-| `dataset.py` | Download, prepare, and clean QVED dataset (replaces utils/load_dataset.py, utils/qved_from_fine_labels.py, utils/clean_dataset.py) |
+| `gemma3n_batch_inference.py` | Batch video inference with Unsloth FastModel |
+| `utils/infer_qved.py` | Single video inference with Unsloth FastModel |
+| `dataset.py` | Download, prepare, clean, and copy QVED dataset (unified tool) |
+| `dataset.py copy` | Copy random videos to flat folder for batch inference |
 | `utils/load_dataset.py` | [Legacy] Download QVED dataset |
 | `utils/qved_from_fine_labels.py` | [Legacy] Create train/val/test splits |
 | `utils/clean_dataset.py` | [Legacy] Filter low-quality videos |

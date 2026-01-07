@@ -63,6 +63,15 @@ python -c "import flash_attn; print(f'✅ Flash Attention version: {flash_attn._
 cd ..
 
 # ----------------------------
+# Mamba-SSM for training (VideoMamba encoder)
+# ----------------------------
+echo "🐍 Installing Mamba-SSM..."
+pip uninstall -y mamba-ssm
+pip cache purge
+pip install mamba-ssm --no-cache-dir --no-build-isolation
+python -c "import mamba_ssm; print('✅ Mamba-SSM installed successfully')"
+
+# ----------------------------
 # Optional: Video libraries for frame handling
 # ----------------------------
 pip install imageio decord scikit-learn scikit-image albumentations
