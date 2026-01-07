@@ -168,10 +168,19 @@ def save_manifest(manifest: Dict[str, str], local_dir: Path) -> Path:
 def download_dataset(max_per_class: int = MAX_PER_CLASS):
     """Main function to download videos and ground truth."""
     print(f"📊 Using MAX_PER_CLASS = {max_per_class}")
+    print(f"📁 Download directory: {LOCAL_DIR}")
     LOCAL_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Step 1: Collect videos by class
-    by_class, all_files = collect_videos(REPO_ID)
+    try:
+        # Step 1: Collect videos by class
+        by_class, all_files = collect_videos(REPO_ID)
+    except Exception as e:
+        print(f"\n❌ Failed to access HuggingFace repository: {e}")
+        print("\n💡 Make sure you're logged in to HuggingFace:")
+        print("   huggingface-cli login")
+        print("   # OR")
+        print("   hf auth login\n")
+        sys.exit(1)
 
     # Step 2: Sample and download
     manifest = sample_and_download(by_class, REPO_ID, LOCAL_DIR, max_per_class)
@@ -180,9 +189,14 @@ def download_dataset(max_per_class: int = MAX_PER_CLASS):
     save_manifest(manifest, LOCAL_DIR)
 
     # Step 4: Download ground truth
-    download_ground_truth(REPO_ID, LOCAL_DIR, all_files)
-
-    print("🏁 Dataset download completed.")
+    gt_result = download_ground_truth(REPO_ID, LOCAL_DIR, all_files)
+    
+    if not gt_result:
+        print("\n⚠️ Warning: Ground truth file not downloaded!")
+        print("   You won't be able to run 'prepare' without it.")
+    
+    print("\n🏁 Dataset download completed.")
+    print(f"\n✅ Next step: python dataset.py prepare")
 
 
 # ============================================
@@ -301,6 +315,19 @@ def save_json(data: List[Dict], output_path: Path):
 
 def prepare_dataset():
     """Main function to prepare train/val/test splits."""
+    # Check if required files exist
+    if not MANIFEST_JSON.exists():
+        print(f"❌ Error: {MANIFEST_JSON} not found.")
+        print("\n💡 You need to download the dataset first:")
+        print("   python dataset.py download\n")
+        sys.exit(1)
+    
+    if not FINE_LABELS_JSON.exists():
+        print(f"❌ Error: {FINE_LABELS_JSON} not found.")
+        print("\n💡 You need to download the dataset first:")
+        print("   python dataset.py download\n")
+        sys.exit(1)
+    
     print("📂 Loading manifest...")
     filename_to_path, filename_to_exercise = load_manifest(MANIFEST_JSON)
 
@@ -431,14 +458,15 @@ def clean_dataset():
     """Main function to clean dataset by filtering low-quality videos."""
     print("🧹 Starting dataset cleaning...")
     
-    if not DATASET_PATH.exists():
-        print(f"❌ Dataset path {DATASET_PATH} does not exist.")
-        print("Run 'python dataset.py download' first.")
+    if not LOCAL_DIR.exists():
+        print(f"❌ Dataset path {LOCAL_DIR} does not exist.")
+        print("\n💡 You need to download the dataset first:")
+        print("   python dataset.py download\n")
         return
 
     CLEANED_DATASET_PATH.mkdir(parents=True, exist_ok=True)
 
-    video_files = list(DATASET_PATH.glob("**/*.mp4"))
+    video_files = list(LOCAL_DIR.glob("**/*.mp4"))
     print(f"Found {len(video_files)} videos to analyze.")
 
     good_videos = []
@@ -462,7 +490,7 @@ def clean_dataset():
         if not issues:
             good_videos.append(video_path)
             # Copy to cleaned dataset
-            relative_path = video_path.relative_to(DATASET_PATH)
+            relative_path = video_path.relative_to(LOCAL_DIR)
             dest_path = CLEANED_DATASET_PATH / relative_path
             dest_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(video_path, dest_path)

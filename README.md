@@ -26,15 +26,14 @@ sudo apt-get install -y wget git build-essential
 git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
 
-# 3. Run automated setup script (installs Miniconda, creates environment, installs dependencies)
+# 3. Run automated setup script (THIS CREATES THE gemma3n ENVIRONMENT)
 bash setup.sh
-
-source ~/.bashrc
 
 # 4. Activate the environment
 conda activate gemma3n
 
-# 5. Accept Conda Terms of Service (required for setup)
+# 5. Accept Conda Terms of Service (required for some packages)
+# NOTE: If you get "EnvironmentNameNotFound", run step 3 first!
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
@@ -155,7 +154,7 @@ sudo apt-get install -y wget git build-essential
 git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
 
-# Run complete setup (installs Miniconda, creates env, installs dependencies)
+# Run setup script (IMPORTANT: This creates the gemma3n environment)
 bash setup.sh
 
 # Activate environment
@@ -473,6 +472,22 @@ bash setup.sh 2>&1 | tee setup.log
 ```
 
 **Conda Environment Not Found:**
+```bash
+# If you get: EnvironmentNameNotFound: Could not find conda environment: gemma3n
+
+# Option 1: Run the setup script (recommended)
+bash setup.sh
+
+# Option 2: Create environment manually
+conda create -n gemma3n python=3.11 -y
+conda activate gemma3n
+pip install -r requirements.txt
+
+# Then verify it exists
+conda info --envs
+```
+
+**Conda Environment Not Activating:**
 ```bash
 # Source conda
 source ~/miniconda3/etc/profile.d/conda.sh
