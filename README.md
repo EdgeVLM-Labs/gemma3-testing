@@ -29,6 +29,8 @@ cd gemma3-testing
 # 3. Run automated setup script (installs Miniconda, creates environment, installs dependencies)
 bash setup.sh
 
+source ~/.bashrc
+
 # 4. Activate the environment
 conda activate gemma3n
 
