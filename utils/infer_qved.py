@@ -136,14 +136,28 @@ def run_inference(
         },
     ]
 
-    # Prepare inputs
-    inputs = tokenizer.apply_chat_template(
-        messages,
-        add_generation_prompt=True,
-        tokenize=True,
-        return_dict=True,
-        return_tensors="pt",
-    ).to(device)
+    # Try to use chat template if available, otherwise use direct tokenization
+    try:
+        # Check if tokenizer has chat template
+        if hasattr(tokenizer, 'chat_template') and tokenizer.chat_template:
+            inputs = tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+            ).to(device)
+        else:
+            raise ValueError("No chat template available")
+    except (ValueError, AttributeError):
+        # Fallback: direct tokenization
+        print("⚠️  Chat template not available, using direct tokenization...")
+        text_prompt = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        inputs = tokenizer(
+            text_prompt,
+            return_tensors="pt",
+            padding=True,
+        ).to(device)
 
     # Generate
     streamer = TextStreamer(tokenizer, skip_prompt=True) if show_stream else None
@@ -157,7 +171,7 @@ def run_inference(
     )
 
     # Decode only the NEW tokens (the answer)
-    input_length = inputs.input_ids.shape[1]
+    input_length = inputs.input_ids.shape[1] if hasattr(inputs, 'input_ids') else inputs['input_ids'].shape[1]
     new_tokens = outputs[0][input_length:]
     response_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
 
@@ -165,12 +179,15 @@ def run_inference(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="QVED Inference with Google/Gemma-3n-E2B (Unsloth)")
+    parser = argparse.ArgumentParser(
+        description="QVED Inference with Google/Gemma-3n-E2B (Unsloth)",
+        epilog="Note: For best results, use 'unsloth/gemma-3n-E4B-it' which includes proper chat templates."
+    )
     parser.add_argument(
         "--model_path",
         type=str,
         default="unsloth/gemma-3n-E4B-it",
-        help="Path to the model (HuggingFace model ID, e.g., unsloth/gemma-3n-E4B-it or google/gemma-3n-E2B)"
+        help="Path to the model (HuggingFace model ID). Recommended: unsloth/gemma-3n-E4B-it or unsloth/gemma-3n-E2B-it"
     )
     parser.add_argument(
         "--video_path",
