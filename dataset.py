@@ -42,7 +42,7 @@ RANDOM_SEED = 42
 
 # Output files
 MANIFEST_JSON = LOCAL_DIR / "manifest.json"
-FINE_LABELS_JSON = LOCAL_DIR / "ground_truth.json"
+FINE_LABELS_JSON = LOCAL_DIR / GROUND_TRUTH_FILE  # Use fine_grained_labels.json
 OUTPUT_TRAIN_JSON = LOCAL_DIR / "qved_train.json"
 OUTPUT_VAL_JSON = LOCAL_DIR / "qved_val.json"
 OUTPUT_TEST_JSON = LOCAL_DIR / "qved_test.json"
