@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-QVED Inference with Google/Gemma-3n-E2B
+QVED Inference with Google/Gemma-3n-E2B (Unsloth)
 
 This script runs inference on a single video using the Google/Gemma-3n-E2B
-Mobile-VideoGPT model (or a finetuned LoRA adapter based on it).
+model via Unsloth FastModel.
 
 Usage:
-    python infer_qved_gemma.py \
+    python infer_qved.py \
         --video_path sample_videos/00000340.mp4 \
         --prompt "Describe this video"
 """
 
-import sys
 import os
 import warnings
 import logging
 import argparse
+from typing import List
 
 os.environ['PYTHONWARNINGS'] = 'ignore'
 warnings.filterwarnings("ignore")
@@ -25,82 +25,152 @@ logging.getLogger('transformers').setLevel(logging.CRITICAL)
 logging.getLogger('transformers.modeling_utils').setLevel(logging.CRITICAL)
 
 import torch
-from pathlib import Path
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
-from peft import PeftModel
-
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from mobilevideogpt.utils import preprocess_input
+import cv2
+from PIL import Image
+from unsloth import FastModel
+from transformers import TextStreamer
 
 
-def load_model(pretrained_path: str, device: str = "cuda", base_model: str = "google/gemma-3n-E2B"):
-    """Loads the pre-trained model and tokenizer."""
-    is_lora_checkpoint = False
-    adapter_path = pretrained_path
+def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
+    """
+    Extract evenly-spaced frames from a video file.
+    
+    Args:
+        video_path: Path to video file
+        num_frames: Number of frames to extract
+    
+    Returns:
+        List of PIL Image objects
+    """
+    cap = cv2.VideoCapture(str(video_path))
 
-    # Detect if path contains LoRA adapters
-    if "checkpoint-" in pretrained_path or os.path.exists(os.path.join(pretrained_path, "adapter_config.json")):
-        is_lora_checkpoint = True
+    if not cap.isOpened():
+        print(f"  ⚠️  Error: Could not open video file {video_path}")
+        return []
 
-    if is_lora_checkpoint:
-        print(f"Loading LoRA adapters from: {adapter_path}")
-        print(f"Base model: {base_model}")
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    if total_frames <= 0:
+        print(f"  ⚠️  Error: Video has no frames {video_path}")
+        return []
+    
+    # Calculate the step size
+    step = total_frames // num_frames
+    frames = []
 
-        config = AutoConfig.from_pretrained(base_model)
-        tokenizer = AutoTokenizer.from_pretrained(base_model, use_fast=False)
-        model = AutoModelForCausalLM.from_pretrained(
-            base_model,
-            config=config,
-            torch_dtype=torch.float16
-        )
-        model = PeftModel.from_pretrained(model, adapter_path)
-        model = model.merge_and_unload()
-    else:
-        print(f"Loading full model from: {pretrained_path}")
-        config = AutoConfig.from_pretrained(pretrained_path)
-        tokenizer = AutoTokenizer.from_pretrained(pretrained_path, use_fast=False)
-        model = AutoModelForCausalLM.from_pretrained(
-            pretrained_path,
-            config=config,
-            torch_dtype=torch.float16
-        )
+    for i in range(num_frames):
+        frame_idx = i * step
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        # Convert BGR (OpenCV) to RGB (PIL)
+        img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        frames.append(img)
 
+    cap.release()
+    return frames
+
+
+def load_model(model_name: str = "unsloth/gemma-3n-E4B-it", device: str = "cuda"):
+    """Load Gemma-3N model using Unsloth FastModel."""
+    print(f"📦 Loading model: {model_name}...")
+    
+    torch._dynamo.config.recompile_limit = 64
+    
+    model, tokenizer = FastModel.from_pretrained(
+        model_name=model_name,
+        dtype=None,  # None for auto detection
+        max_seq_length=1024,
+        load_in_4bit=False,
+        full_finetuning=False,
+        # token="hf_...",  # use one if using gated models
+    )
+    
     model.to(device)
+    print("✅ Model loaded successfully!")
     return model, tokenizer
 
 
-def run_inference(model, tokenizer, video_path: str, prompt: str, device: str = "cuda", max_new_tokens: int = 512):
-    """Runs inference on the given video file."""
-    input_ids, video_frames, context_frames, stop_str = preprocess_input(
-        model, tokenizer, video_path, prompt
+def run_inference(
+    model,
+    tokenizer,
+    video_path: str,
+    prompt: str,
+    device: str = "cuda",
+    num_frames: int = 8,
+    max_new_tokens: int = 512,
+    show_stream: bool = False
+) -> str:
+    """
+    Run inference on a video file.
+    
+    Args:
+        model: The loaded model
+        tokenizer: The tokenizer
+        video_path: Path to video file
+        prompt: Text prompt for inference
+        device: Device to use (cuda/cpu)
+        num_frames: Number of frames to extract
+        max_new_tokens: Maximum tokens to generate
+        show_stream: Whether to show streaming output
+    
+    Returns:
+        Generated response text
+    """
+    # Extract frames
+    video_frames = extract_frames(video_path, num_frames=num_frames)
+    
+    if not video_frames:
+        return "ERROR: Could not extract frames from video"
+
+    # Build the message
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                *[{"type": "image", "image": img} for img in video_frames],
+                {"type": "text", "text": prompt}
+            ],
+        },
+    ]
+
+    # Prepare inputs
+    inputs = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt",
+    ).to(device)
+
+    # Generate
+    streamer = TextStreamer(tokenizer, skip_prompt=True) if show_stream else None
+    
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=max_new_tokens,
+        temperature=0.1,
+        do_sample=True,
+        streamer=streamer,
     )
 
-    with torch.inference_mode():
-        output_ids = model.generate(
-            input_ids,
-            images=torch.stack(video_frames, dim=0).half().to(device),
-            context_images=torch.stack(context_frames, dim=0).half().to(device),
-            do_sample=False,
-            num_beams=1,
-            max_new_tokens=max_new_tokens,
-            use_cache=True,
-        )
+    # Decode only the NEW tokens (the answer)
+    input_length = inputs.input_ids.shape[1]
+    new_tokens = outputs[0][input_length:]
+    response_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
 
-    outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
-    if outputs.endswith(stop_str):
-        outputs = outputs[:-len(stop_str)].strip()
-
-    return outputs
+    return response_text
 
 
 def main():
-    parser = argparse.ArgumentParser(description="QVED Inference with Google/Gemma-3n-E2B")
+    parser = argparse.ArgumentParser(description="QVED Inference with Google/Gemma-3n-E2B (Unsloth)")
     parser.add_argument(
         "--model_path",
         type=str,
-        default="google/gemma-3n-E2B",
-        help="Path to the model (HuggingFace model ID or local checkpoint directory)"
+        default="unsloth/gemma-3n-E4B-it",
+        help="Path to the model (HuggingFace model ID, e.g., unsloth/gemma-3n-E4B-it or google/gemma-3n-E2B)"
     )
     parser.add_argument(
         "--video_path",
@@ -121,41 +191,49 @@ def main():
         help="Device to run inference on (cuda/cpu)"
     )
     parser.add_argument(
+        "--num_frames",
+        type=int,
+        default=8,
+        help="Number of frames to extract from video"
+    )
+    parser.add_argument(
         "--max_new_tokens",
         type=int,
         default=512,
         help="Maximum number of new tokens to generate"
     )
     parser.add_argument(
-        "--base_model",
-        type=str,
-        default="google/gemma-3n-E2B",
-        help="Base model to use when loading LoRA adapters"
+        "--show_stream",
+        action="store_true",
+        help="Show streaming output during inference"
     )
 
     args = parser.parse_args()
 
     if not os.path.exists(args.video_path):
         print(f"❌ Error: Video file not found: {args.video_path}")
-        sys.exit(1)
+        return
 
-    print(f"📦 Loading model from: {args.model_path}")
-    model, tokenizer = load_model(args.model_path, device=args.device, base_model=args.base_model)
+    # Load model
+    model, tokenizer = load_model(args.model_path, device=args.device)
 
     print(f"🎥 Processing video: {args.video_path}")
     print(f"💬 Prompt: {args.prompt}")
     print("\n" + "="*80)
 
+    # Run inference
     output = run_inference(
         model,
         tokenizer,
         args.video_path,
         args.prompt,
         device=args.device,
-        max_new_tokens=args.max_new_tokens
+        num_frames=args.num_frames,
+        max_new_tokens=args.max_new_tokens,
+        show_stream=args.show_stream
     )
 
-    print("🤖 Mobile-VideoGPT Output:")
+    print("🤖 Gemma-3N Output:")
     print(output)
     print("="*80)
 
