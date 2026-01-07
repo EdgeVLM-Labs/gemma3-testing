@@ -35,6 +35,7 @@ pip install unsloth unsloth_zoo
 pip install opencv-python opencv-contrib-python Pillow
 pip install gradio gradio_client requests httpx uvicorn fastapi
 pip install einops einops-exts loguru tenacity numpy<2.0 wandb openai==1.54.0
+pip install mamba-ssm==1.2.0
 
 # ----------------------------
 # Video augmentation: VidAug
@@ -102,8 +103,4 @@ hf auth login
 
 echo "✅ Setup complete!"
 echo "🚀 Gemma-3N E2B environment is ready."
-source ~/.bashrc
-
-pip install mamba-ssm==1.2.0
-
 source ~/.bashrc
