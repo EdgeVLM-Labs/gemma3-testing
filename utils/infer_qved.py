@@ -136,7 +136,7 @@ def run_inference(
         },
     ]
 
-    # Try to use chat template if available, otherwise use direct tokenization
+    # Try to use chat template if available, otherwise use direct processing
     try:
         # Check if tokenizer has chat template
         if hasattr(tokenizer, 'chat_template') and tokenizer.chat_template:
@@ -150,14 +150,19 @@ def run_inference(
         else:
             raise ValueError("No chat template available")
     except (ValueError, AttributeError):
-        # Fallback: direct tokenization
-        print("⚠️  Chat template not available, using direct tokenization...")
+        # Fallback: direct processing with images
+        print("⚠️  Chat template not available, using direct processing...")
         text_prompt = f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        
+        # Process with images
         inputs = tokenizer(
-            text_prompt,
+            text=text_prompt,
+            images=video_frames,
             return_tensors="pt",
             padding=True,
-        ).to(device)
+        )
+        # Move all tensors to device
+        inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
 
     # Generate
     streamer = TextStreamer(tokenizer, skip_prompt=True) if show_stream else None
@@ -171,7 +176,13 @@ def run_inference(
     )
 
     # Decode only the NEW tokens (the answer)
-    input_length = inputs.input_ids.shape[1] if hasattr(inputs, 'input_ids') else inputs['input_ids'].shape[1]
+    if 'input_ids' in inputs:
+        input_length = inputs['input_ids'].shape[1]
+    elif hasattr(inputs, 'input_ids'):
+        input_length = inputs.input_ids.shape[1]
+    else:
+        input_length = 0
+        
     new_tokens = outputs[0][input_length:]
     response_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
 
