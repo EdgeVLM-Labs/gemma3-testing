@@ -11,14 +11,14 @@ echo "========================================="
 
 # Default values
 MODEL_PATH=""
-HF_REPO=""
+HF_REPO="google/gemma-3n-E2B"
 TEST_JSON="dataset/qved_test.json"
 DATA_PATH="dataset"
 OUTPUT_DIR=""
 DEVICE="cuda"
 MAX_NEW_TOKENS=256
 BASE_MODEL="google/gemma-3n-E2B"
-LIMIT=""
+LIMIT="50"
 NO_BERT=""
 
 # Parse arguments

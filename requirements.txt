@@ -6,7 +6,7 @@ pydantic
 markdown2[all]
 torch>=2.1.0       
 accelerate
-peft==0.10.0
+peft>=0.11.0
 bitsandbytes
 deepspeed
 timm
@@ -41,4 +41,8 @@ numpy<2.0
 wandb
 openai==1.54.0
 albumentations
-opencv-python-headless  
+opencv-python-headless
+protobuf
+mamba-ssm==1.2.0
+huggingface_hub>=0.34.0
+tqdm

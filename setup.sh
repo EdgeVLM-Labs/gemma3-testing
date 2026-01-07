@@ -17,6 +17,10 @@ source $HOME/miniconda/etc/profile.d/conda.sh
 conda init bash
 # source ~/.bashrc
 
+echo "✅ Accepting Conda Terms of Service..."
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
 echo "📦 Creating Conda environment..."
 conda create --name=gemma3n python=3.11 -y
 conda activate gemma3n
@@ -27,15 +31,7 @@ pip install tqdm
 # Base Python packages
 # ----------------------------
 echo "🧱 Installing base packages..."
-pip install torch==2.1.2 torchvision==0.16.2 torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install transformers==4.55.4
-pip install timm
-pip install sentencepiece protobuf datasets>=3.4.1,<4.0.0 huggingface_hub>=0.34.0 hf_transfer
-pip install unsloth unsloth_zoo
-pip install opencv-python opencv-contrib-python Pillow
-pip install gradio gradio_client requests httpx uvicorn fastapi
-pip install einops einops-exts loguru tenacity numpy<2.0 wandb openai==1.54.0
-pip install mamba-ssm==1.2.0
+pip install -r requirements.txt
 
 # ----------------------------
 # Video augmentation: VidAug
