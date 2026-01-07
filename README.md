@@ -4,12 +4,14 @@ This repository provides tools for fine-tuning and inference with **Google Gemma
 
 ## 🚀 Features
 
+- **Gemma-3N-E2B implementation** with dedicated folder structure
 - **Fine-tuning** on QVED (Quality Video Exercise Dataset)
 - **Batch video inference** for multiple videos
 - **Single video inference** for quick testing
 - **Dataset preparation** and quality control
 - **Training visualization** and evaluation reports
 - **Model uploading** to Hugging Face Hub
+- **Modular architecture** with docs, eval, and training components
 
 ---
 
@@ -21,6 +23,13 @@ gemma3-testing/
 ├── gemma3n_batch_inference.py  # Batch inference (Unsloth FastModel)
 ├── setup.sh              # Environment setup script
 ├── requirements.txt      # Python dependencies
+├── gemma3/               # 🆕 Gemma-3N-E2B implementation
+│   ├── train/           # Training scripts (train.py, pretrain.py, trainer.py)
+│   ├── model/           # Model architecture (arch, builder, dataloader)
+│   ├── config/          # Configuration files
+│   ├── docs/            # Gemma3-specific documentation
+│   ├── eval/            # Evaluation scripts
+│   └── README.md        # Gemma3 implementation guide
 ├── scripts/              # Training and inference scripts
 │   ├── initialize_dataset.sh       # Dataset setup and training
 │   ├── finetune_qved.sh           # QVED fine-tuning script
@@ -36,10 +45,24 @@ gemma3-testing/
 │   ├── generate_test_report.py    # Evaluation report generator
 │   ├── hf_upload.py               # Upload models to HF Hub
 │   └── ...                        # Other utilities
-├── mobilevideogpt/       # Model architecture & utilities
-├── eval/                 # Evaluation scripts
+├── mobilevideogpt/       # [Legacy] Original Mobile-VideoGPT architecture
+├── docs/                 # General documentation
+├── eval/                 # General evaluation scripts
 └── README.md             # This file
 ```
+
+### Gemma3 Folder Structure
+
+The `gemma3/` folder contains the complete Gemma-3N-E2B implementation:
+
+- **`train/`**: Training scripts (train.py, pretrain.py, trainer.py)
+- **`model/`**: Model architecture, encoders, projectors
+- **`config/`**: Dataset and model configurations
+- **`docs/`**: Architecture docs, quickstart guides, troubleshooting
+- **`eval/`**: Evaluation scripts and metrics
+- **`README.md`**: Detailed implementation guide
+
+See [gemma3/README.md](gemma3/README.md) and [gemma3/docs/ARCHITECTURE.md](gemma3/docs/ARCHITECTURE.md) for details.
 
 ---
 

@@ -25,7 +25,7 @@ OUTPUT_FINETUNE=results/mobilevideogpt_finetune_gemma3n_e2b
 # -----------------------
 # Stage 1: Video Projection Pretraining
 # -----------------------
-deepspeed mobilevideogpt/train/pretrain.py \
+deepspeed gemma3/train/pretrain.py \
 --deepspeed scripts/zero2.json \
 --tune_mm_mlp_adapter True \
 --model_name_or_path "$BASE_LLM_PATH" \
@@ -63,7 +63,7 @@ deepspeed mobilevideogpt/train/pretrain.py \
 # -----------------------
 # Stage 2: Image Projection Pretraining
 # -----------------------
-deepspeed mobilevideogpt/train/pretrain.py \
+deepspeed gemma3/train/pretrain.py \
 --deepspeed scripts/zero2.json \
 --tune_image_mm_mlp_adapter True \
 --model_name_or_path "$BASE_LLM_PATH" \
@@ -104,7 +104,7 @@ deepspeed mobilevideogpt/train/pretrain.py \
 PRETRAIN_VIDEO_MLP_PATH=$OUTPUT_VIDEO_PRETRAIN/mm_projector.bin
 PRETRAIN_IMAGE_MLP_PATH=$OUTPUT_IMAGE_PRETRAIN/mm_projector.bin
 
-deepspeed mobilevideogpt/train/train.py \
+deepspeed gemma3/train/train.py \
 --lora_enable True \
 --lora_r 128 \
 --lora_alpha 256 \

@@ -70,7 +70,7 @@ EOF
 echo "Hyperparameters saved to $CONFIG_FILE"
 
 # Stage 3: Fine-tuning on QVED dataset using Gemma-3N-E2B
-deepspeed gemma3n/train/train.py \
+deepspeed gemma3/train/train.py \
   --deepspeed scripts/zero2.json \
   --lora_enable True \
   --lora_r $LORA_R \

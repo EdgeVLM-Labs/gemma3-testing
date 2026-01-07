@@ -71,7 +71,7 @@ echo "Hyperparameters saved to $CONFIG_FILE"
 
 # ===================== Stage 3: Fine-tuning =====================
 # Note: ZeRO-2 used for Mamba compatibility
-deepspeed train/train.py \
+deepspeed gemma3/train/train.py \
   --deepspeed scripts/zero2.json \
   --lora_enable True \
   --lora_r $LORA_R \

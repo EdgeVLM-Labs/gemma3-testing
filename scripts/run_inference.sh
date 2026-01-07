@@ -65,7 +65,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            echo "Usage: bash scripts/run_gemma3n_inference.sh [--model_path <path> | --hf_repo <repo>] [options]"
+            echo "Usage: bash scripts/run_inference.sh [--model_path <path> | --hf_repo <repo>] [options]"
             echo ""
             echo "Model Source (one required):"
             echo "  --model_path      Path to local finetuned model checkpoint"
@@ -160,7 +160,7 @@ if [ -n "$LIMIT" ]; then
     LIMIT_ARG="--limit $LIMIT"
 fi
 
-python utils/test_inference_gemma3n.py \
+python utils/test_inference.py \
     --model_path "$MODEL_PATH" \
     --test_json "$TEST_JSON" \
     --data_path "$DATA_PATH" \

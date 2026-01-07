@@ -81,7 +81,7 @@ done
 
 # 4️⃣ Check required scripts
 echo -e "\n[4] Checking required scripts..."
-required_scripts=("scripts/finetune_gemma.sh" "scripts/zero3.json")
+required_scripts=("scripts/finetune_qved.sh" "scripts/initialize_dataset.sh" "scripts/zero2.json")
 for script in "${required_scripts[@]}"; do
     if [ -f "$script" ]; then
         echo "✓ $script found"
@@ -93,10 +93,10 @@ done
 # 5️⃣ Check Python / Conda environment
 echo -e "\n[5] Checking environment..."
 if command -v conda &>/dev/null; then
-    if conda env list | grep -q "gemma3n_env"; then
-        echo "✓ Conda environment 'gemma3n_env' exists"
+    if conda env list | grep -q "gemma3n"; then
+        echo "✓ Conda environment 'gemma3n' exists"
     else
-        echo "✗ Conda environment 'gemma3n_env' NOT found"
+        echo "✗ Conda environment 'gemma3n' NOT found"
     fi
 elif command -v python &>/dev/null; then
     python_path=$(which python)
@@ -119,6 +119,8 @@ echo -e "\n========================================="
 echo "Setup verification complete!"
 echo "========================================="
 echo -e "\nTo start finetuning Gemma-3N-E2B, run:"
-echo "  conda activate gemma3n_env"
-echo "  bash scripts/finetune_gemma.sh"
+echo "  conda activate gemma3n"
+echo "  bash scripts/finetune_qved.sh"
+echo "  # OR"
+echo "  bash scripts/initialize_dataset.sh"
 echo "========================================="
