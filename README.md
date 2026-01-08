@@ -6,48 +6,84 @@ This repository provides tools for fine-tuning and inference with **Google Gemma
 
 ## 🎯 Quick Start
 
-**📋 New users: See [Setup Checklist](docs/SETUP_CHECKLIST.md) for a step-by-step guide with checkboxes!**
+**� Complete Guide: See [Fine-tuning Guide](docs/FINETUNE_GUIDE.md) for detailed instructions!**
 
 ### Prerequisites
 - Linux/macOS (Ubuntu 20.04+ recommended)
 - NVIDIA GPU with CUDA support (16GB+ VRAM recommended)
 - 50GB+ free disk space
-- Root/sudo access for system packages
 - Git and basic command line knowledge
 
-### Initial Setup (First Time)
+### Fast Setup
 
-#### **Step 1: System Dependencies**
+```bash
+# 1. Clone repository
+git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
+cd gemma3-testing
+
+# 2. Setup environment
+bash setup.sh
+conda activate gemma3n
+
+# 3. Login to services
+wandb login
+huggingface-cli login
+
+# 4. Prepare dataset
+python dataset.py download --max-per-class 5
+python dataset.py prepare
+
+# 5. Fine-tune model
+bash scripts/finetune_gemma3n_unsloth.sh
+
+# 6. Run inference
+python scripts/run_inference_unsloth.py \
+    --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit \
+    --video_path dataset/exercise_class_1/video_001.mp4
+```
+
+---
+
+## 📚 Documentation
+
+- **[Fine-tuning Guide](docs/FINETUNE_GUIDE.md)** - Complete guide for training and inference
+- [Setup Checklist](docs/SETUP_CHECKLIST.md) - Step-by-step setup with checkboxes
+- [Quick Start](docs/QUICKSTART.md) - Original quick start guide
+
+---
+
+## 🔧 Initial Setup (Detailed)
+
+### Step 1: System Dependencies
 ```bash
 # Install system dependencies (Ubuntu/Debian)
 sudo apt-get update
 sudo apt-get install -y wget git build-essential
 ```
 
-#### **Step 2: Clone Repository**
+### Step 2: Clone Repository
 ```bash
 git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
 ```
 
-#### **Step 3: Environment Setup**
+### Step 3: Environment Setup
 ```bash
 # Run automated setup script (creates gemma3n environment)
 bash setup.sh
 
 # Activate the environment
 conda activate gemma3n
-
-# Accept Conda Terms of Service
-conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 ```
 
-#### **Step 4: Authentication**
+### Step 4: Authentication
 ```bash
-# Login to Hugging Face (required for gated models)
+# Login to Hugging Face (required for models and datasets)
 huggingface-cli login
-# You'll need to:
+
+# Login to Weights & Biases (required for training tracking)
+wandb login
+```
 #   - Create account at https://huggingface.co
 #   - Generate token at https://huggingface.co/settings/tokens
 #   - Request access to google/gemma-3n-E2B model

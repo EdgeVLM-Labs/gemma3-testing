@@ -1,80 +1,168 @@
 #!/bin/bash
 
-# Gemma-3N E4B Fine-tuning Script with Unsloth
-# This script fine-tunes unsloth/gemma-3n-E4B-it on QVED dataset
+# ==========================================
+# Gemma-3N Fine-tuning Script with Unsloth
+# ==========================================
+# 
+# This script fine-tunes gemma-3n-E4B-it using Unsloth FastVisionModel
+# Supports both local QVED dataset and HuggingFace streaming datasets
+#
+# Usage:
+#   # For local QVED dataset (default, prepared by dataset.py):
+#   bash scripts/finetune_gemma3n_unsloth.sh
+#   # OR explicitly:
+#   bash scripts/finetune_gemma3n_unsloth.sh --local
+#
+#   # For HuggingFace dataset (streaming download, optional):
+#   bash scripts/finetune_gemma3n_unsloth.sh --hf
+#
+# ==========================================
+
+set -e  # Exit on error
+
+# ===================== Configuration =====================
+
+# Model configuration
+MODEL_NAME="unsloth/gemma-3n-E4B-it"
+LOAD_IN_4BIT=""  # Add "--load_in_4bit" for 4-bit quantization
+
+# Dataset configuration (choose one)
+DATASET_MODE="${1:---local}"  # Default to local mode (prepared by dataset.py)
+
+# Local QVED dataset paths (prepared by dataset.py)
+TRAIN_JSON="dataset/qved_train.json"
+VAL_JSON="dataset/qved_val.json"
+
+# HuggingFace dataset configuration
+HF_DATASET="EdgeVLM-Labs/QVED-Test-Dataset"
+HF_SPLIT="train"
+NUM_SAMPLES=500
+VIDEO_SAVE_DIR="videos"
+
+# Training hyperparameters
+OUTPUT_DIR="outputs/gemma3n_finetune_$(date +%Y%m%d_%H%M%S)"
+BATCH_SIZE=1
+GRAD_ACCUM=4
+LEARNING_RATE=2e-4
+NUM_EPOCHS=3
+MAX_SEQ_LENGTH=50000
+WARMUP_RATIO=0.03
+MAX_GRAD_NORM=0.3
+WEIGHT_DECAY=0.001
+
+# LoRA configuration
+LORA_R=64
+LORA_ALPHA=128
+LORA_DROPOUT=0.0
+
+# Video processing
+NUM_FRAMES=8
+
+# Wandb configuration
+WANDB_PROJECT="Finetune-gemma3n"
+WANDB_RUN_NAME="gemma-3n-finetune-$(date +%Y%m%d_%H%M%S)"
+
+# HuggingFace token (optional, set via environment variable)
+# export HF_TOKEN="your_token_here"
 
 # ===================== Environment Setup =====================
 export PYTHONPATH="./:$PYTHONPATH"
 
-# WandB Configuration
-export WANDB_PROJECT="gemma3n-finetune"
-export WANDB_NAME="gemma3n-E4B-finetune-$(date +%Y%m%d_%H%M%S)"
-
-# ===================== Configuration =====================
-MODEL_NAME="unsloth/gemma-3n-E4B-it"
-TRAIN_JSON="dataset/qved_train.json"
-VAL_JSON="dataset/qved_val.json"
-OUTPUT_DIR="results/gemma3n_E4B_finetune"
-
-# Training Hyperparameters
-NUM_FRAMES=8
-BATCH_SIZE=2
-GRADIENT_ACCUMULATION=4
-LEARNING_RATE=2e-4
-NUM_EPOCHS=3
-MAX_SEQ_LENGTH=2048
-
-# LoRA Configuration
-LORA_R=16
-LORA_ALPHA=32
+# Suppress warnings
+export TOKENIZERS_PARALLELISM=false
 
 echo "========================================="
-echo "Gemma-3N E4B Fine-tuning (Unsloth)"
+echo "Gemma-3N Fine-tuning with Unsloth"
 echo "========================================="
 echo "Model: $MODEL_NAME"
-echo "Training data: $TRAIN_JSON"
 echo "Output: $OUTPUT_DIR"
+echo "Batch size: $BATCH_SIZE x $GRAD_ACCUM = $((BATCH_SIZE * GRAD_ACCUM))"
+echo "Learning rate: $LEARNING_RATE"
 echo "Epochs: $NUM_EPOCHS"
-echo "Learning Rate: $LEARNING_RATE"
-echo "Batch Size: $BATCH_SIZE x $GRADIENT_ACCUMULATION = $((BATCH_SIZE * GRADIENT_ACCUMULATION))"
 echo "LoRA: r=$LORA_R, alpha=$LORA_ALPHA"
 echo "========================================="
+echo ""
 
-# Verify dataset exists
-if [ ! -f "$TRAIN_JSON" ]; then
-    echo "❌ Error: Training data not found: $TRAIN_JSON"
-    echo "Please run: python dataset.py download && python dataset.py prepare"
+# ===================== Build Command =====================
+
+CMD="python gemma3_finetune_unsloth.py \
+    --model_name $MODEL_NAME \
+    $LOAD_IN_4BIT \
+    --batch_size $BATCH_SIZE \
+    --gradient_accumulation $GRAD_ACCUM \
+    --learning_rate $LEARNING_RATE \
+    --num_epochs $NUM_EPOCHS \
+    --max_seq_length $MAX_SEQ_LENGTH \
+    --warmup_ratio $WARMUP_RATIO \
+    --max_grad_norm $MAX_GRAD_NORM \
+    --weight_decay $WEIGHT_DECAY \
+    --lora_r $LORA_R \
+    --lora_alpha $LORA_ALPHA \
+    --lora_dropout $LORA_DROPOUT \
+    --num_frames $NUM_FRAMES \
+    --wandb_project $WANDB_PROJECT \
+    --wandb_run_name $WANDB_RUN_NAME \
+    --output_dir $OUTPUT_DIR"
+
+# Add dataset-specific arguments
+if [ "$DATASET_MODE" == "--local" ]; then
+    echo "📂 Using local QVED dataset (prepared by dataset.py)"
+    
+    # Verify dataset exists
+    if [ ! -f "$TRAIN_JSON" ]; then
+        echo "❌ Error: Training data not found: $TRAIN_JSON"
+        echo "Please run: python dataset.py download && python dataset.py prepare"
+        echo "Or if already downloaded: python dataset.py prepare"
+        exit 1
+    fi
+    
+    CMD="$CMD --train_json $TRAIN_JSON"
+    if [ -f "$VAL_JSON" ]; then
+        CMD="$CMD --val_json $VAL_JSON"
+    fi
+elif [ "$DATASET_MODE" == "--hf" ]; then
+    echo "🤗 Using HuggingFace dataset: $HF_DATASET (from local cache if available)"
+    CMD="$CMD \
+        --hf_dataset $HF_DATASET \
+        --hf_split $HF_SPLIT \
+        --num_samples $NUM_SAMPLES \
+        --video_save_dir $VIDEO_SAVE_DIR"
+else
+    echo "❌ Invalid dataset mode. Use --local or --hf"
     exit 1
 fi
 
-# Create output directory
+# Add HF token if available
+if [ -n "$HF_TOKEN" ]; then
+    CMD="$CMD --hf_token $HF_TOKEN"
+fi
+
+# ===================== Create Output Directory =====================
 mkdir -p "$OUTPUT_DIR"
 
-# Run training
-python gemma3_finetune_unsloth.py \
-    --model_name "$MODEL_NAME" \
-    --train_json "$TRAIN_JSON" \
-    --val_json "$VAL_JSON" \
-    --output_dir "$OUTPUT_DIR" \
-    --num_frames "$NUM_FRAMES" \
-    --batch_size "$BATCH_SIZE" \
-    --gradient_accumulation "$GRADIENT_ACCUMULATION" \
-    --learning_rate "$LEARNING_RATE" \
-    --num_epochs "$NUM_EPOCHS" \
-    --max_seq_length "$MAX_SEQ_LENGTH" \
-    --lora_r "$LORA_R" \
-    --lora_alpha "$LORA_ALPHA" \
-    --wandb_project "$WANDB_PROJECT" \
-    --wandb_run_name "$WANDB_NAME"
+# ===================== Run Training =====================
+echo ""
+echo "🚀 Starting fine-tuning..."
+echo ""
+echo "Command:"
+echo "$CMD"
+echo ""
 
+eval $CMD
+
+# ===================== Post-training =====================
 echo ""
 echo "========================================="
 echo "✅ Fine-tuning completed!"
-echo "LoRA adapter: $OUTPUT_DIR"
-echo "Merged model: ${OUTPUT_DIR}_merged"
+echo "========================================="
+echo "📁 Model saved to: $OUTPUT_DIR"
+echo "📁 Merged 16-bit model: ${OUTPUT_DIR}_merged_16bit"
+if [ -n "$LOAD_IN_4BIT" ]; then
+    echo "📁 Merged 4-bit model: ${OUTPUT_DIR}_merged_4bit"
+fi
 echo ""
 echo "To run inference with the fine-tuned model:"
 echo "python utils/infer_qved.py \\"
-echo "  --model_path ${OUTPUT_DIR}_merged \\"
+echo "  --model_path ${OUTPUT_DIR}_merged_16bit \\"
 echo "  --video_path sample_videos/00000340.mp4"
 echo "========================================="

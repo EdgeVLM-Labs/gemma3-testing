@@ -1,33 +1,55 @@
-transformers>=4.35.2,<=4.57.3
+# Core dependencies for Gemma-3N fine-tuning with Unsloth
+transformers==4.56.2
 tokenizers
 sentencepiece
-shortuuid
-pydantic
-markdown2[all]
+protobuf
+
+# PyTorch and related
 torch>=2.1.0
 torchao>=0.6.0
 accelerate>=0.34.1
-peft>=0.13.0,<0.14.0
 bitsandbytes>=0.45.5
-deepspeed
-timm
-einops
-einops-exts
+
+# Unsloth for efficient fine-tuning
 unsloth
 unsloth_zoo
+peft
+trl==0.22.2
+
+# Vision processing
+timm
 opencv-python
 opencv-contrib-python
+Pillow
 imageio
 decord
-Pillow          
+einops
+einops-exts
+
+# Dataset and HuggingFace
+datasets>=4.3.0
+huggingface_hub>=0.34.0
+hf_transfer
+
+# Training utilities
+wandb
+deepspeed
+
+# Additional utilities
+numpy<2.0
+tqdm
+shortuuid
+pydantic
+markdown2[all]
 mmengine
 scikit-learn
-datasets>=3.4.1,<4.0.0
 sacrebleu
 evaluate
 nltk
 sqlitedict
 pytablewriter
+
+# API and serving (optional)
 gradio
 gradio_client
 requests
@@ -36,14 +58,14 @@ uvicorn
 fastapi
 loguru
 tenacity
-hf_transfer
-shortuuid
-numpy<2.0
-wandb
 openai==1.54.0
+
+# Augmentation (optional)
 albumentations
 opencv-python-headless
-protobuf
+
+# Video processing (optional - for VideoMamba support)
 mamba-ssm==1.2.0
-huggingface_hub>=0.34.0
-tqdm
+
+# Typing extensions (for compatibility)
+typing_extensions
