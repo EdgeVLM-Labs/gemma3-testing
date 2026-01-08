@@ -9,6 +9,10 @@ Fine-tune Google's **Gemma-3N (unsloth/gemma-3n-E4B-it)** model on video dataset
 ## 🚀 Quick Start
 
 ```bash
+# Install system dependencies (Ubuntu/Debian)
+apt-get update
+apt-get install -y wget git build-essential
+
 # 1. Clone and setup environment
 git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
