@@ -12,11 +12,11 @@ pip uninstall -y torch torchvision torchaudio torchao
 
 # Install PyTorch nightly (has torch.int1 support)
 echo "📦 Installing PyTorch nightly with CUDA 12.1..."
-pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+pip install --upgrade --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
 
 # Install TorchAO nightly
 echo "⚡ Installing TorchAO nightly..."
-pip install --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu121
+pip install --upgrade --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu121
 
 # Verify installation
 echo ""

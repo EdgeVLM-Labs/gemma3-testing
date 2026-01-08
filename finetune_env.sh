@@ -16,7 +16,7 @@ echo ""
 # ----------------------------
 echo "📦 [1/7] Installing PyTorch nightly with CUDA 12.1..."
 pip uninstall -y torch torchvision torchaudio
-pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+pip install --upgrade --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
 echo "✅ PyTorch nightly installed"
 echo ""
 
@@ -24,7 +24,7 @@ echo ""
 # 2. TorchAO (with torch.int1 support)
 # ----------------------------
 echo "⚡ [2/7] Installing TorchAO nightly..."
-pip install --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu121
+pip install --upgrade --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu121
 echo "✅ TorchAO installed"
 echo ""
 
