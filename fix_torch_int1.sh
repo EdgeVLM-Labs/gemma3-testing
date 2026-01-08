@@ -10,20 +10,26 @@ echo ""
 echo "📦 Uninstalling current PyTorch and TorchAO..."
 pip uninstall -y torch torchvision torchaudio torchao
 
+# Clear pip cache to ensure fresh downloads
+echo "🧹 Clearing pip cache..."
+pip cache purge
+
 # Install PyTorch nightly (has torch.int1 support)
-echo "📦 Installing PyTorch nightly with CUDA 12.1..."
-pip install --upgrade --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+echo "📦 Installing latest PyTorch nightly with CUDA 12.1..."
+pip install --force-reinstall --upgrade --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
 
 # Install TorchAO nightly
 echo "⚡ Installing TorchAO nightly..."
-pip install --upgrade --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu121
+pip install --force-reinstall --upgrade --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu121
 
 # Verify installation
 echo ""
 echo "🧪 Verifying installation..."
 python -c "import torch; print(f'✅ PyTorch {torch.__version__}')" 2>/dev/null || echo "❌ PyTorch import failed"
+python -c "import torchvision; print(f'✅ TorchVision {torchvision.__version__}')" 2>/dev/null || echo "❌ TorchVision import failed"
 python -c "import torch; print(f'✅ torch.int1 available: {hasattr(torch, \"int1\")}')" 2>/dev/null || echo "❌ torch.int1 check failed"
 python -c "import torchao; print(f'✅ TorchAO imported successfully')" 2>/dev/null || echo "❌ TorchAO import failed"
+python -c "from unsloth import FastModel; print('✅ Unsloth import successful')" 2>/dev/null || echo "❌ Unsloth import failed"
 
 echo ""
 echo "✅ Fix complete! Try running your fine-tuning script again."
