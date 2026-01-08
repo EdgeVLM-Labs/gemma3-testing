@@ -223,6 +223,14 @@ def main():
                        help="Path to local QVED training JSON (prepared by dataset.py)")
     parser.add_argument("--val_json", type=str, default="dataset/qved_val.json",
                        help="Path to local QVED validation JSON (prepared by dataset.py)")
+    parser.add_argument("--run_eval", action="store_true",
+                       help="Run evaluation on validation set during training")
+    parser.add_argument("--eval_steps", type=int, default=50,
+                       help="Run evaluation every N steps")
+    parser.add_argument("--save_eval_csv", action="store_true",
+                       help="Save evaluation results as CSV after training")
+    parser.add_argument("--generate_report", action="store_true",
+                       help="Generate Excel test report after training")
     parser.add_argument("--hf_dataset", type=str, default=None,
                        help="HuggingFace dataset name (optional, for streaming download)")
     parser.add_argument("--hf_split", type=str, default="train",
@@ -277,6 +285,14 @@ def main():
                        help="Wandb run name")
     parser.add_argument("--hf_token", type=str, default=None,
                        help="HuggingFace API token")
+    
+    # HuggingFace upload configuration
+    parser.add_argument("--upload_to_hf", action="store_true",
+                       help="Upload model to HuggingFace Hub after training")
+    parser.add_argument("--hf_repo_name", type=str, default=None,
+                       help="HuggingFace repository name (auto-generated if not provided)")
+    parser.add_argument("--hf_private", action="store_true",
+                       help="Make HuggingFace repository private")
     
     # DeepSpeed configuration
     parser.add_argument("--deepspeed_config", type=str, default=None,
@@ -362,6 +378,13 @@ def main():
         print(f"📥 Loading dataset from local JSON: {args.train_json}")
         train_dataset = load_qved_dataset(args.train_json, args.num_frames)
         
+        # Load validation dataset if evaluation is enabled
+        eval_dataset = None
+        if args.run_eval and args.val_json and os.path.exists(args.val_json):
+            print(f"📥 Loading validation dataset from: {args.val_json}")
+            eval_dataset = load_qved_dataset(args.val_json, args.num_frames)
+            print(f"✅ Validation dataset ready: {len(eval_dataset)} samples\n")
+        
     elif args.hf_dataset:
         # Load from HuggingFace Hub (streaming download)
         print(f"📥 Loading dataset from HuggingFace: {args.hf_dataset}")
@@ -397,6 +420,7 @@ def main():
     trainer = SFTTrainer(
         model=model,
         train_dataset=train_dataset,
+        eval_dataset=eval_dataset if args.run_eval else None,
         processing_class=processor.tokenizer,
         data_collator=UnslothVisionDataCollator(model, processor, max_seq_length=args.max_seq_length),
         args=SFTConfig(
@@ -412,6 +436,10 @@ def main():
             logging_first_step=True,
             save_strategy="steps",
             save_steps=50,
+            eval_strategy="steps" if args.run_eval else "no",
+            eval_steps=args.eval_steps if args.run_eval else None,
+            load_best_model_at_end=True if args.run_eval else False,
+            metric_for_best_model="eval_loss" if args.run_eval else None,
             optim="adamw_torch_fused",
             weight_decay=args.weight_decay,
             lr_scheduler_type="cosine",
@@ -479,6 +507,163 @@ def main():
     if args.load_in_4bit:
         print(f"📁 Merged 4-bit model saved to: {merged_4bit_dir}")
     print("="*80)
+    
+    # Run final evaluation and save results
+    if args.run_eval and eval_dataset:
+        print("\n" + "="*80)
+        print("📊 Running final evaluation on validation set...")
+        print("="*80 + "\n")
+        
+        try:
+            # Run evaluation
+            eval_results = trainer.evaluate(eval_dataset=eval_dataset)
+            
+            print("\n📈 Final Evaluation Results:")
+            for key, value in eval_results.items():
+                if isinstance(value, float):
+                    print(f"  {key}: {value:.4f}")
+                else:
+                    print(f"  {key}: {value}")
+            
+            # Save as CSV if requested
+            if args.save_eval_csv:
+                import csv
+                csv_path = f"{args.output_dir}/eval_results.csv"
+                print(f"\n💾 Saving evaluation results to: {csv_path}")
+                
+                with open(csv_path, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["Metric", "Value"])
+                    for key, value in eval_results.items():
+                        writer.writerow([key, value])
+                
+                print(f"✅ Evaluation results saved to CSV")
+            
+            # Generate Excel report if requested
+            if args.generate_report:
+                print("\n📊 Generating Excel test report...")
+                try:
+                    # Run inference on validation set first
+                    print("  Running inference on validation set...")
+                    predictions = []
+                    
+                    for idx, sample in enumerate(eval_dataset):
+                        if idx >= 50:  # Limit to 50 samples for report
+                            break
+                        
+                        try:
+                            messages = sample["messages"]
+                            inputs = processor.apply_chat_template(
+                                messages[:-1],  # Exclude assistant response
+                                add_generation_prompt=True,
+                                tokenize=True,
+                                return_dict=True,
+                                return_tensors="pt",
+                            ).to("cuda")
+                            
+                            with torch.no_grad():
+                                outputs = model.generate(
+                                    **inputs,
+                                    max_new_tokens=256,
+                                    temperature=0.1,
+                                    do_sample=False,
+                                )
+                            
+                            input_length = inputs.input_ids.shape[1]
+                            new_tokens = outputs[0][input_length:]
+                            prediction = processor.tokenizer.decode(new_tokens, skip_special_tokens=True)
+                            ground_truth = messages[-1]["content"][0]["text"]
+                            
+                            predictions.append({
+                                "video_path": f"sample_{idx}",
+                                "ground_truth": ground_truth,
+                                "prediction": prediction.strip(),
+                                "status": "success",
+                                "error": ""
+                            })
+                        except Exception as e:
+                            predictions.append({
+                                "video_path": f"sample_{idx}",
+                                "ground_truth": "",
+                                "prediction": "",
+                                "status": "error",
+                                "error": str(e)
+                            })
+                    
+                    # Save predictions JSON
+                    predictions_path = f"{args.output_dir}/eval_predictions.json"
+                    with open(predictions_path, 'w') as f:
+                        json.dump(predictions, f, indent=2)
+                    
+                    print(f"  ✅ Predictions saved to: {predictions_path}")
+                    
+                    # Generate Excel report
+                    report_path = f"{args.output_dir}/eval_report.xlsx"
+                    
+                    # Import and run report generation
+                    import sys
+                    sys.path.insert(0, 'utils')
+                    from generate_test_report import create_excel_report
+                    
+                    create_excel_report(predictions, report_path, use_bert=True)
+                    print(f"  ✅ Excel report generated: {report_path}")
+                    
+                except Exception as e:
+                    print(f"  ⚠️ Warning: Failed to generate report: {e}")
+                    print(f"  You can manually generate it later with:")
+                    print(f"    python utils/generate_test_report.py --predictions {args.output_dir}/eval_predictions.json")
+        
+        except Exception as e:
+            print(f"⚠️ Warning: Evaluation failed: {e}")
+    
+    # Upload to HuggingFace if requested
+    if args.upload_to_hf:
+        print("\n" + "="*80)
+        print("🚀 Uploading model to HuggingFace Hub...")
+        print("="*80 + "\n")
+        
+        try:
+            from huggingface_hub import HfApi, create_repo, upload_folder
+            from datetime import datetime
+            
+            # Generate repo name if not provided
+            if args.hf_repo_name is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                repo_name = f"gemma3n-E4B-finetune-{timestamp}"
+            else:
+                repo_name = args.hf_repo_name
+            
+            # Get user info
+            api = HfApi()
+            user_info = api.whoami()
+            username = user_info['name']
+            repo_id = f"{username}/{repo_name}"
+            
+            print(f"📦 Creating repository: {repo_id}")
+            create_repo(repo_id=repo_id, repo_type="model", private=args.hf_private, exist_ok=True)
+            
+            # Upload merged 16-bit model (recommended for inference)
+            print(f"📤 Uploading merged 16-bit model from {merged_dir}...")
+            upload_folder(
+                folder_path=merged_dir,
+                repo_id=repo_id,
+                repo_type="model",
+                commit_message=f"Upload Gemma-3N-E4B fine-tuned model (16-bit merged)",
+                ignore_patterns=["*.py", "__pycache__", "*.pyc", "runs/*", "wandb/*"],
+            )
+            
+            repo_url = f"https://huggingface.co/{repo_id}"
+            print(f"\n✅ Model uploaded successfully!")
+            print(f"🔗 Repository: {repo_url}")
+            print(f"\nTo use this model:")
+            print(f"  from unsloth import FastVisionModel")
+            print(f"  model, processor = FastVisionModel.from_pretrained('{repo_id}')")
+            print("="*80)
+            
+        except Exception as e:
+            print(f"\n⚠️ Warning: Failed to upload to HuggingFace: {e}")
+            print(f"You can manually upload later using:")
+            print(f"  python utils/hf_upload.py --model_path {merged_dir}")
     
     wandb.finish()
 

@@ -78,6 +78,11 @@ echo "📦 Installing additional dependencies..."
 pip install opencv-python matplotlib
 pip install wandb
 
+# Install evaluation packages
+echo "📊 Installing evaluation packages..."
+pip install nltk rouge-score
+python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')" 2>/dev/null || true
+
 # ----------------------------
 # Ensure unsloth and timm are up to date
 # ----------------------------

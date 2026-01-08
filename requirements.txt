@@ -52,6 +52,8 @@ nltk
 rouge-score
 sqlitedict
 pytablewriter
+openpyxl
+sentence-transformers
 
 # API and serving (optional)
 gradio

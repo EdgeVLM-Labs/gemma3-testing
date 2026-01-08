@@ -260,10 +260,38 @@ bash scripts/finetune_gemma3n_unsloth.sh --hf
    - **Gradient norm:** Gradient magnitude
    - **Learning rate:** Current LR (cosine schedule)
    - **Epoch progress:** Training progress
+   - **Eval loss:** Validation loss (if evaluation enabled)
 
 Console output shows:
 ```
 {'loss': 1.0995, 'grad_norm': 27.17, 'learning_rate': 0.0002, 'epoch': 0.1}
+{'eval_loss': 0.8543, 'eval_runtime': 12.5}  # If evaluation enabled
+```
+
+### Enable Evaluation During Training
+
+Track validation metrics during training by editing [finetune_gemma3n_unsloth.sh](scripts/finetune_gemma3n_unsloth.sh):
+
+```bash
+# Enable evaluation
+RUN_EVAL="--run_eval"            # Enable validation during training
+EVAL_STEPS=50                     # Run eval every 50 steps
+SAVE_EVAL_CSV="--save_eval_csv"  # Save results as CSV
+GENERATE_REPORT="--generate_report"  # Generate Excel report at end
+```
+
+This will:
+- Run evaluation on validation set every 50 steps
+- Save best model based on eval loss
+- Export final eval results to CSV
+- Optionally generate Excel report with BERT/ROUGE/METEOR metrics
+
+Output files after training with eval:
+```
+outputs/gemma3n_finetune_20260108_151431/
+├── eval_results.csv              # Evaluation metrics CSV
+├── eval_predictions.json         # Model predictions on val set
+└── eval_report.xlsx              # Excel report with similarity scores
 ```
 
 ### Training Output Files
@@ -290,7 +318,59 @@ outputs/
 
 ---
 
-## 🔮 Inference
+## � Upload to HuggingFace
+
+### Automatic Upload After Training
+
+Enable automatic upload by setting flags in [finetune_gemma3n_unsloth.sh](scripts/finetune_gemma3n_unsloth.sh):
+
+```bash
+# Edit the script
+UPLOAD_TO_HF="--upload_to_hf"     # Enable upload
+HF_REPO_NAME=""                    # Auto-generate name
+HF_PRIVATE="--hf_private"          # Make private (optional)
+
+# Run training (will auto-upload at end)
+bash scripts/finetune_gemma3n_unsloth.sh
+```
+
+### Manual Upload After Training
+
+Upload a saved model manually:
+
+```bash
+# Upload merged 16-bit model (recommended)
+python utils/hf_upload.py \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit \
+    --repo_name my-gemma3n-finetune
+
+# Upload with custom settings
+python utils/hf_upload.py \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit \
+    --repo_name my-custom-model \
+    --private
+
+# Upload LoRA adapters only
+python utils/hf_upload.py \
+    --model_path outputs/gemma3n_finetune_20260108_162806
+```
+
+### Use Uploaded Model
+
+Once uploaded, anyone can use your model:
+
+```python
+from unsloth import FastVisionModel
+
+# Load from HuggingFace
+model, processor = FastVisionModel.from_pretrained(
+    "your-username/my-gemma3n-finetune"
+)
+```
+
+---
+
+## �🔮 Inference
 
 ### Single Video Analysis
 

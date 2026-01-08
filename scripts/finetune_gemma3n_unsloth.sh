@@ -65,6 +65,17 @@ NUM_FRAMES=8
 WANDB_PROJECT="Finetune-gemma3n"
 WANDB_RUN_NAME="gemma-3n-finetune-$(date +%Y%m%d_%H%M%S)"
 
+# HuggingFace upload (optional)
+UPLOAD_TO_HF=""  # Set to "--upload_to_hf" to auto-upload after training
+HF_REPO_NAME=""  # Leave empty for auto-generated name, or set custom name
+HF_PRIVATE=""    # Set to "--hf_private" to make repository private
+
+# Evaluation configuration (optional)
+RUN_EVAL="--run_eval"           # Enable evaluation during training
+EVAL_STEPS=50                    # Run eval every N steps
+SAVE_EVAL_CSV="--save_eval_csv" # Save eval results as CSV
+GENERATE_REPORT=""               # Set to "--generate_report" to generate Excel report
+
 # HuggingFace token (optional, set via environment variable)
 # export HF_TOKEN="your_token_here"
 
@@ -105,7 +116,13 @@ CMD="python gemma3_finetune_unsloth.py \
     --num_frames $NUM_FRAMES \
     --wandb_project $WANDB_PROJECT \
     --wandb_run_name $WANDB_RUN_NAME \
-    --output_dir $OUTPUT_DIR"
+    --output_dir $OUTPUT_DIR \
+    $RUN_EVAL \
+    --eval_steps $EVAL_STEPS \
+    $SAVE_EVAL_CSV \
+    $GENERATE_REPORT \
+    $UPLOAD_TO_HF \
+    $HF_PRIVATE"
 
 # Add DeepSpeed config if specified
 if [ -n "$DEEPSPEED_CONFIG" ] && [ -f "$DEEPSPEED_CONFIG" ]; then
@@ -174,4 +191,9 @@ echo "To run inference with the fine-tuned model:"
 echo "python utils/infer_qved.py \\"
 echo "  --model_path ${OUTPUT_DIR}_merged_16bit \\"
 echo "  --video_path sample_videos/00000340.mp4"
+echo ""
+echo "To upload model to HuggingFace:"
+echo "python utils/hf_upload.py \\"
+echo "  --model_path ${OUTPUT_DIR}_merged_16bit \\"
+echo "  --repo_name my-gemma3n-finetune"
 echo "========================================="

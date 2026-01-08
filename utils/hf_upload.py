@@ -2,12 +2,12 @@
 """
 HuggingFace Model Upload Utility
 
-Uploads finetuned Gemma3N-E2B models to HuggingFace Hub under google organization.
+Uploads finetuned Gemma-3N-E4B models to HuggingFace Hub.
 
 Usage:
-    python utils/hf_upload.py --model_path results/finetune/gemma-3n-E2B
-    python utils/hf_upload.py --model_path results/finetune/gemma-3n-E2B --repo_name gemma3n-finetune-20260104
-    python utils/hf_upload.py --model_path results/finetune/gemma-3n-E2B --private
+    python utils/hf_upload.py --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit
+    python utils/hf_upload.py --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit --repo_name my-gemma3n-finetune
+    python utils/hf_upload.py --model_path outputs/gemma3n_finetune_20260108_162806 --private
 """
 
 import os
@@ -18,8 +18,8 @@ from pathlib import Path
 
 from huggingface_hub import HfApi, create_repo, upload_folder, login
 
-# Default organization name
-DEFAULT_ORG = "google"
+# Default organization name (will use user's account if not specified)
+DEFAULT_ORG = None  # Set to None to use user's account, or specify org name
 
 
 def get_default_repo_name() -> str:
@@ -87,7 +87,14 @@ def upload_model_to_hf(
     if repo_name is None:
         repo_name = get_default_repo_name()
 
-    repo_id = f"{org_name}/{repo_name}"
+    # Get user info to determine repo_id
+    api = HfApi()
+    if org_name is None:
+        user_info = api.whoami()
+        username = user_info['name']
+        repo_id = f"{username}/{repo_name}"
+    else:
+        repo_id = f"{org_name}/{repo_name}"
 
     print(f"\n{'='*60}")
     print("HuggingFace Model Upload")
@@ -145,12 +152,12 @@ def upload_model_to_hf(
 
     # Usage instructions
     print("To use this model:")
-    print(f"  from unsloth import FastModel")
-    print(f"  model, tokenizer = FastModel.from_pretrained('{repo_id}')")
+    print(f"  from unsloth import FastVisionModel")
+    print(f"  model, processor = FastVisionModel.from_pretrained('{repo_id}')")
     if has_adapter:
         print("\n  # For LoRA adapters:")
         print(f"  from peft import PeftModel")
-        print(f"  base_model, tokenizer = FastModel.from_pretrained('google/gemma-3n-E2B')")
+        print(f"  base_model, processor = FastVisionModel.from_pretrained('unsloth/gemma-3n-E4B-it')")
         print(f"  model = PeftModel.from_pretrained(base_model, '{repo_id}')")
     print(f"{'='*60}")
 
