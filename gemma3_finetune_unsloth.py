@@ -284,6 +284,20 @@ def main():
     
     args = parser.parse_args()
     
+    # Check if DeepSpeed is available
+    deepspeed_config = None
+    if args.deepspeed_config:
+        try:
+            import deepspeed
+            if os.path.exists(args.deepspeed_config):
+                deepspeed_config = args.deepspeed_config
+                print(f"⚡ DeepSpeed config loaded: {deepspeed_config}")
+            else:
+                print(f"⚠️ DeepSpeed config file not found: {args.deepspeed_config}")
+        except ImportError:
+            print("⚠️ DeepSpeed not installed. Training without DeepSpeed optimization.")
+            print("   To use DeepSpeed, install it with: pip install deepspeed")
+    
     # Login to HuggingFace if token provided
     if args.hf_token:
         print("🔐 Logging into HuggingFace...")
@@ -409,7 +423,7 @@ def main():
             dataset_text_field="",
             dataset_kwargs={"skip_prepare_dataset": True},
             max_length=args.max_seq_length,
-            deepspeed=args.deepspeed_config if hasattr(args, 'deepspeed_config') and args.deepspeed_config else None,
+            deepspeed=deepspeed_config,
         )
     )
     print("✅ Trainer ready\n")

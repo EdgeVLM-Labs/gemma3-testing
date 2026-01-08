@@ -51,7 +51,7 @@ MAX_GRAD_NORM=0.3
 WEIGHT_DECAY=0.001
 
 # DeepSpeed configuration (optional)
-DEEPSPEED_CONFIG="scripts/zero.json"  # Set to "" to disable DeepSpeed
+DEEPSPEED_CONFIG="scripts/zero.json"  # Set to "scripts/zero.json" to enable DeepSpeed (requires: pip install deepspeed)
 WEIGHT_DECAY=0.001
 
 # LoRA configuration
