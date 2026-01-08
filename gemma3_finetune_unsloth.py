@@ -278,9 +278,6 @@ def main():
     
     args = parser.parse_args()
     
-    # Set torch dynamo recompile limit
-    torch._dynamo.config.recompile_limit = 64
-    
     # Login to HuggingFace if token provided
     if args.hf_token:
         print("🔐 Logging into HuggingFace...")

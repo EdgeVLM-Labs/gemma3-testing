@@ -86,16 +86,6 @@ pip install --no-deps --upgrade timm  # Required for Gemma 3N
 pip install --upgrade unsloth unsloth_zoo
 
 # ----------------------------
-# Configure torch dynamo
-# ----------------------------
-echo "⚙️ Configuring PyTorch..."
-python -c "
-import torch
-torch._dynamo.config.recompile_limit = 64
-print('✅ PyTorch dynamo configured')
-"
-
-# ----------------------------
 # Environment verification
 # ----------------------------
 echo ""

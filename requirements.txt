@@ -15,6 +15,7 @@ unsloth
 unsloth_zoo
 peft
 trl==0.22.2
+typing_extensions
 
 # Vision processing
 timm
