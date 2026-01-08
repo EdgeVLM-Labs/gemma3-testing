@@ -1,24 +1,34 @@
 #!/usr/bin/env python3
 """
-Video Augmentation Script for QVED Dataset
-Uses vidaug library to apply various augmentation techniques to exercise videos.
+Video Augmentation & Gemma3N-E2B Inference Script
+
+This script:
+1. Applies video augmentations using vidaug.
+2. Saves augmented videos.
+3. Optionally runs Gemma3N-E2B inference on augmented frames.
+4. Updates JSON files to reflect new augmented videos.
+
+Usage:
+    python augment_videos.py \
+        --dataset_dir dataset \
+        --folders 1,3 \
+        --augmentations 1,3,5 \
+        --run_inference
 """
 
+import argparse
 import json
 import cv2
 import numpy as np
 from pathlib import Path
+from PIL import Image
 import vidaug.augmentors as va
-from PIL import Image, ImageFilter
-import sys
+from unsloth import FastModel
+import torch
 
-# Base directory
-BASE_DIR = Path(__file__).parent.parent / "dataset"
-GROUND_TRUTH_FILE = BASE_DIR / "fine_grained_labels.json"
-MANIFEST_FILE = BASE_DIR / "manifest.json"
-OUTPUT_GROUND_TRUTH_FILE = BASE_DIR / "ground_truth.json"
-
-# Define available augmentations with numbers
+# ----------------------------
+# Augmentation Options
+# ----------------------------
 AUGMENTATION_OPTIONS = {
     1: ("Horizontal Flip", va.HorizontalFlip()),
     2: ("Vertical Flip", va.VerticalFlip()),
@@ -36,293 +46,175 @@ AUGMENTATION_OPTIONS = {
     14: ("Elastic Transformation", va.ElasticTransformation(alpha=10, sigma=3)),
 }
 
-
-def display_augmentation_options():
-    """Display all available augmentation options."""
-    print("\n" + "="*60)
-    print("Available Video Augmentation Techniques:")
-    print("="*60)
-    for idx, (name, _) in AUGMENTATION_OPTIONS.items():
-        print(f"  {idx:2d}. {name}")
-    print("="*60 + "\n")
-
-
+# ----------------------------
+# Helper Functions
+# ----------------------------
 def load_video_frames(video_path):
-    """Load video frames as a list of PIL Images."""
+    """Load video frames as PIL Images."""
     cap = cv2.VideoCapture(str(video_path))
     frames = []
-
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        # Convert BGR to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        # Convert to PIL Image
-        pil_image = Image.fromarray(frame_rgb)
-        frames.append(pil_image)
-
+        frames.append(Image.fromarray(frame_rgb))
     cap.release()
     return frames
 
-
 def save_video_frames(frames, output_path, fps=30):
-    """Save frames as a video file."""
+    """Save PIL frames as a video file."""
     if not frames:
-        print(f"Warning: No frames to save for {output_path}")
         return False
-
-    # Convert first frame to get dimensions
     first_frame = np.array(frames[0])
     height, width = first_frame.shape[:2]
-
-    # Create video writer
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
-
     for frame in frames:
-        # Convert PIL Image to numpy array
-        frame_np = np.array(frame)
-        # Convert RGB to BGR for OpenCV
-        frame_bgr = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
-        out.write(frame_bgr)
-
+        out.write(cv2.cvtColor(np.array(frame), cv2.COLOR_RGB2BGR))
     out.release()
     return True
 
-
 def get_video_fps(video_path):
-    """Get the FPS of a video."""
     cap = cv2.VideoCapture(str(video_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     cap.release()
     return fps if fps > 0 else 30
 
-
-def augment_video(video_path, augmentors, output_path):
-    """Apply augmentation to a video."""
-    print(f"  Processing: {video_path.name}...", end=" ", flush=True)
-
-    # Load video frames
+def augment_video(video_path, augmentor, output_path):
     frames = load_video_frames(video_path)
-
     if not frames:
-        print("❌ Failed to load frames")
+        print(f"❌ Failed to load frames for {video_path.name}")
         return False
-
-    # Apply augmentation sequence
     try:
-        augmented_frames = augmentors(frames)
+        augmented_frames = augmentor(frames)
     except Exception as e:
         print(f"❌ Augmentation failed: {e}")
         return False
-
-    # Get original FPS
     fps = get_video_fps(video_path)
+    return save_video_frames(augmented_frames, output_path, fps)
 
-    # Save augmented video
-    success = save_video_frames(augmented_frames, output_path, fps)
+def update_json_files(augmented_videos_info, base_dir, update_manifest=True):
+    """Update JSON files with augmented video info."""
+    ground_truth_file = base_dir / "fine_grained_labels.json"
+    manifest_file = base_dir / "manifest.json"
+    output_ground_truth_file = base_dir / "ground_truth.json"
 
-    if success:
-        print("✓")
-        return True
-    else:
-        print("❌ Failed to save")
-        return False
-
-
-def update_json_files(augmented_videos_info):
-    """Update JSON files with augmented video paths."""
-    print("\n" + "="*60)
-    print("Updating JSON files with augmented videos...")
-    print("="*60)
-
-    # Load existing JSON files
-    with open(GROUND_TRUTH_FILE, 'r') as f:
+    with open(ground_truth_file, 'r') as f:
         fine_grained_labels = json.load(f)
+    if manifest_file.exists() and update_manifest:
+        with open(manifest_file, 'r') as f:
+            manifest = json.load(f)
+    else:
+        manifest = {}
 
-    with open(MANIFEST_FILE, 'r') as f:
-        manifest = json.load(f)
-
-    # Load ground_truth.json if it exists
-    ground_truth = {}
-    if OUTPUT_GROUND_TRUTH_FILE.exists():
-        with open(OUTPUT_GROUND_TRUTH_FILE, 'r') as f:
+    if output_ground_truth_file.exists():
+        with open(output_ground_truth_file, 'r') as f:
             ground_truth = json.load(f)
+    else:
+        ground_truth = {}
 
-    # Add augmented videos to JSON files
     for aug_info in augmented_videos_info:
-        original_path = aug_info['original_path']
-        augmented_path = aug_info['augmented_path']
-
-        # Find original entry in fine_grained_labels
-        if original_path in fine_grained_labels:
-            # Copy the entry for augmented video
-            fine_grained_labels[augmented_path] = fine_grained_labels[original_path].copy()
-
-        # Add to manifest (copy from original if exists)
-        # Use string format to maintain consistency with original entries
-        if original_path in manifest:
-            # If original is a string, use it directly; if dict, extract the exercise name
-            original_value = manifest[original_path]
-            if isinstance(original_value, str):
-                manifest[augmented_path] = original_value
-            elif isinstance(original_value, dict) and 'path' in original_value:
-                # Get exercise name from original entry's key
-                manifest[augmented_path] = original_value.get('exercise', original_value.get('path', augmented_path).split('/')[0].replace('_', ' '))
-            else:
-                manifest[augmented_path] = augmented_path.split('/')[0].replace('_', ' ')
+        orig, aug = aug_info['original_path'], aug_info['augmented_path']
+        if orig in fine_grained_labels:
+            fine_grained_labels[aug] = fine_grained_labels[orig].copy()
+        if orig in manifest:
+            manifest[aug] = manifest[orig]
         else:
-            # Extract exercise name from path (folder name)
-            exercise_name = augmented_path.split('/')[0]
-            manifest[augmented_path] = exercise_name
+            manifest[aug] = aug.split('/')[0]
+        if orig in ground_truth:
+            ground_truth[aug] = ground_truth[orig].copy()
 
-        # Add to ground_truth.json if original exists there
-        if original_path in ground_truth:
-            ground_truth[augmented_path] = ground_truth[original_path].copy()
-
-    # Save updated JSON files
-    with open(GROUND_TRUTH_FILE, 'w') as f:
+    with open(ground_truth_file, 'w') as f:
         json.dump(fine_grained_labels, f, indent=2)
-    print(f"✓ Updated {GROUND_TRUTH_FILE}")
-
-    with open(MANIFEST_FILE, 'w') as f:
+    with open(manifest_file, 'w') as f:
         json.dump(manifest, f, indent=2)
-    print(f"✓ Updated {MANIFEST_FILE}")
-
     if ground_truth:
-        with open(OUTPUT_GROUND_TRUTH_FILE, 'w') as f:
+        with open(output_ground_truth_file, 'w') as f:
             json.dump(ground_truth, f, indent=2)
-        print(f"✓ Updated {OUTPUT_GROUND_TRUTH_FILE}")
 
-    print(f"\n✓ Added {len(augmented_videos_info)} augmented videos to JSON files")
+# ----------------------------
+# Gemma3N Inference
+# ----------------------------
+def run_gemma3n_inference(model, tokenizer, frames, prompt="Analyze the video."):
+    """Run inference on list of PIL frames."""
+    from transformers import TextStreamer
 
+    messages = [{"role":"user", "content":[{"type":"image", "image":img} for img in frames] + [{"type":"text","text":prompt}]}]
+    
+    inputs = tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt").to("cuda")
+    
+    streamer = TextStreamer(tokenizer, skip_prompt=True)
+    outputs = model.generate(**inputs, max_new_tokens=256, temperature=0.1, do_sample=True, streamer=streamer)
+    return outputs
 
+# ----------------------------
+# Main Function
+# ----------------------------
 def main():
-    print("\n" + "="*60)
-    print("Video Augmentation Tool for QVED Dataset")
-    print("="*60)
+    parser = argparse.ArgumentParser(description="Video Augmentation Tool for Gemma3N-E2B")
+    parser.add_argument("--dataset_dir", type=str, default="dataset", help="Dataset base directory")
+    parser.add_argument("--folders", type=str, default=None, help="Comma-separated folder indices to augment")
+    parser.add_argument("--augmentations", type=str, default=None, help="Comma-separated augmentation indices")
+    parser.add_argument("--run_inference", action="store_true", help="Run Gemma3N-E2B inference on augmented videos")
+    args = parser.parse_args()
 
-    # Get list of exercise folders
-    exercise_folders = sorted([d for d in BASE_DIR.iterdir() if d.is_dir() and (d / "*.mp4" or list(d.glob("*.mp4")))])
-
+    base_dir = Path(args.dataset_dir)
+    exercise_folders = sorted([d for d in base_dir.iterdir() if d.is_dir() and any(d.glob("*.mp4"))])
     if not exercise_folders:
-        print("❌ No exercise folders found in dataset directory!")
+        print("❌ No exercise folders found")
         return
 
-    # Display video counts
-    print("\nExercise folders and video counts:")
-    print("-" * 60)
-    for idx, folder in enumerate(exercise_folders, 1):
-        video_count = len(list(folder.glob("*.mp4")))
-        print(f"  {idx}. {folder.name:<40} ({video_count} videos)")
-    print("-" * 60)
-
-    # Let user choose folders to augment
-    print("\nEnter the indices of folders you want to augment (comma-separated)")
-    print("Example: 1,3,5 or just press Enter to augment all")
-    folder_input = input("Folder indices: ").strip()
-
-    if folder_input:
+    if args.folders:
         try:
-            selected_indices = [int(x.strip()) for x in folder_input.split(',')]
-            selected_folders = [exercise_folders[i-1] for i in selected_indices if 1 <= i <= len(exercise_folders)]
-        except (ValueError, IndexError):
-            print("❌ Invalid input! Please enter valid comma-separated numbers.")
+            indices = [int(x)-1 for x in args.folders.split(',')]
+            selected_folders = [exercise_folders[i] for i in indices if 0 <= i < len(exercise_folders)]
+        except Exception:
+            print("❌ Invalid folder indices")
             return
     else:
         selected_folders = exercise_folders
 
-    print(f"\n✓ Selected {len(selected_folders)} folder(s) for augmentation")
+    if args.augmentations:
+        try:
+            aug_indices = [int(x) for x in args.augmentations.split(',') if int(x) in AUGMENTATION_OPTIONS]
+        except Exception:
+            print("❌ Invalid augmentation indices")
+            return
+    else:
+        aug_indices = list(AUGMENTATION_OPTIONS.keys())
 
-    # Display augmentation options
-    display_augmentation_options()
+    # Load Gemma3N model if requested
+    if args.run_inference:
+        model, tokenizer = FastModel.from_pretrained("unsloth/gemma-3n-E2B")
+        print("✅ Gemma3N-E2B loaded for inference")
+    else:
+        model = tokenizer = None
 
-    # Track all augmented videos for JSON update
     all_augmented_videos = []
 
-    # For each selected folder, ask for augmentation techniques
     for folder in selected_folders:
-        print("\n" + "="*60)
-        print(f"Folder: {folder.name}")
-        print("="*60)
+        videos = sorted(folder.glob("*.mp4"))
+        for video_path in videos:
+            for idx in aug_indices:
+                aug_name, augor = AUGMENTATION_OPTIONS[idx]
+                seq = va.Sequential([augor])
+                output_file = folder / f"{video_path.stem}_aug{idx}.mp4"
+                success = augment_video(video_path, seq, output_file)
+                if success:
+                    all_augmented_videos.append({
+                        "original_path": str(Path(folder.name) / video_path.name),
+                        "augmented_path": str(Path(folder.name) / output_file.name)
+                    })
+                    # Optionally run Gemma3N inference
+                    if args.run_inference:
+                        frames = load_video_frames(output_file)
+                        result = run_gemma3n_inference(model, tokenizer, frames)
+                        print(f"🎯 Gemma3N Output ({output_file.name}): {result}")
 
-        videos = sorted(list(folder.glob("*.mp4")))
-        if not videos:
-            print("No videos found, skipping...")
-            continue
-
-        print(f"Found {len(videos)} video(s)")
-        print("\nEnter augmentation techniques to apply (comma-separated indices)")
-        print("Example: 1,3,5 for Horizontal Flip, Random Rotate, Gaussian Blur")
-        aug_input = input("Augmentation indices: ").strip()
-
-        if not aug_input:
-            print("No augmentations selected, skipping folder...")
-            continue
-
-        try:
-            selected_aug_indices = [int(x.strip()) for x in aug_input.split(',')]
-            selected_augmentors = []
-            aug_names = []
-
-            for idx in selected_aug_indices:
-                if idx in AUGMENTATION_OPTIONS:
-                    name, augmentor = AUGMENTATION_OPTIONS[idx]
-                    selected_augmentors.append(augmentor)
-                    aug_names.append(name)
-                else:
-                    print(f"Warning: Invalid augmentation index {idx}, skipping...")
-
-            if not selected_augmentors:
-                print("No valid augmentations selected, skipping folder...")
-                continue
-
-            print(f"\n✓ Will apply: {', '.join(aug_names)}")
-
-            # Create augmentation sequence
-            seq = va.Sequential(selected_augmentors)
-
-            # Process each video in the folder
-            for video_path in videos:
-                # Generate output filename with augmentation index
-                for aug_idx in selected_aug_indices:
-                    if aug_idx not in AUGMENTATION_OPTIONS:
-                        continue
-
-                    # Create individual augmentor for this technique
-                    _, augmentor = AUGMENTATION_OPTIONS[aug_idx]
-                    single_aug = va.Sequential([augmentor])
-
-                    video_stem = video_path.stem
-                    output_filename = f"{video_stem}_{aug_idx}.mp4"
-                    output_path = folder / output_filename
-
-                    # Apply augmentation
-                    success = augment_video(video_path, single_aug, output_path)
-
-                    if success:
-                        # Track for JSON update
-                        relative_original = str(Path(folder.name) / video_path.name)
-                        relative_augmented = str(Path(folder.name) / output_filename)
-                        all_augmented_videos.append({
-                            'original_path': relative_original,
-                            'augmented_path': relative_augmented
-                        })
-
-        except ValueError:
-            print("❌ Invalid input! Please enter valid comma-separated numbers.")
-            continue
-
-    # Update JSON files
     if all_augmented_videos:
-        update_json_files(all_augmented_videos)
-        print("\n" + "="*60)
-        print(f"✓ Augmentation Complete! Created {len(all_augmented_videos)} augmented videos")
-        print("="*60)
-    else:
-        print("\n❌ No videos were augmented")
-
+        update_json_files(all_augmented_videos, base_dir)
+        print(f"\n✓ Augmentation complete! {len(all_augmented_videos)} videos created.")
 
 if __name__ == "__main__":
     main()

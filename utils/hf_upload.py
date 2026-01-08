@@ -2,12 +2,12 @@
 """
 HuggingFace Model Upload Utility
 
-Uploads finetuned Mobile-VideoGPT models to HuggingFace Hub.
+Uploads finetuned Gemma-3N-E4B models to HuggingFace Hub.
 
 Usage:
-    python utils/hf_upload.py --model_path results/qved_finetune_mobilevideogpt_0.5B
-    python utils/hf_upload.py --model_path results/qved_finetune_mobilevideogpt_0.5B --repo_name qved-finetune-20241128
-    python utils/hf_upload.py --model_path results/qved_finetune_mobilevideogpt_0.5B --private
+    python utils/hf_upload.py --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit
+    python utils/hf_upload.py --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit --repo_name my-gemma3n-finetune
+    python utils/hf_upload.py --model_path outputs/gemma3n_finetune_20260108_162806 --private
 """
 
 import os
@@ -18,15 +18,14 @@ from pathlib import Path
 
 from huggingface_hub import HfApi, create_repo, upload_folder, login
 
-
-# Default organization name
-DEFAULT_ORG = "EdgeVLM-Labs"
+# Default organization name (will use user's account if not specified)
+DEFAULT_ORG = None  # Set to None to use user's account, or specify org name
 
 
 def get_default_repo_name() -> str:
     """Generate a default repository name with timestamp."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"qved-finetune-{timestamp}"
+    return f"gemma3n-finetune-{timestamp}"
 
 
 def check_hf_login() -> bool:
@@ -51,7 +50,7 @@ def upload_model_to_hf(
     Upload a finetuned model to HuggingFace Hub.
 
     Args:
-        model_path: Path to the model directory (can be checkpoint or base finetuning dir)
+        model_path: Path to the model directory (checkpoint or finetuned model)
         repo_name: Name for the HuggingFace repository
         org_name: HuggingFace organization name
         private: Whether to create a private repository
@@ -61,19 +60,17 @@ def upload_model_to_hf(
         URL of the uploaded model on HuggingFace
     """
     model_path = Path(model_path)
-
     if not model_path.exists():
         raise FileNotFoundError(f"Model path not found: {model_path}")
 
-    # Check for adapter files or model files
+    # Detect if model contains LoRA adapters or full model
     has_adapter = (model_path / "adapter_config.json").exists()
     has_model = (model_path / "config.json").exists() or (model_path / "pytorch_model.bin").exists()
 
     if not has_adapter and not has_model:
-        # Maybe it's a checkpoint directory
+        # Check for checkpoint directories
         checkpoints = list(model_path.glob("checkpoint-*"))
         if checkpoints:
-            # Use the latest checkpoint
             latest_checkpoint = sorted(checkpoints, key=lambda x: int(x.name.split("-")[1]))[-1]
             print(f"Using latest checkpoint: {latest_checkpoint}")
             model_path = latest_checkpoint
@@ -83,15 +80,21 @@ def upload_model_to_hf(
     if not has_adapter and not has_model:
         raise ValueError(
             f"No model or adapter files found in {model_path}. "
-            "Expected adapter_config.json or config.json"
+            "Expected adapter_config.json or config.json / pytorch_model.bin"
         )
 
     # Generate repo name if not provided
     if repo_name is None:
         repo_name = get_default_repo_name()
 
-    # Full repository ID
-    repo_id = f"{org_name}/{repo_name}"
+    # Get user info to determine repo_id
+    api = HfApi()
+    if org_name is None:
+        user_info = api.whoami()
+        username = user_info['name']
+        repo_id = f"{username}/{repo_name}"
+    else:
+        repo_id = f"{org_name}/{repo_name}"
 
     print(f"\n{'='*60}")
     print("HuggingFace Model Upload")
@@ -102,31 +105,21 @@ def upload_model_to_hf(
     print(f"Type: {'LoRA Adapter' if has_adapter else 'Full Model'}")
     print(f"{'='*60}\n")
 
-    # Check login status
+    # Ensure logged in
     if not check_hf_login():
-        print("⚠ Not logged into HuggingFace. Please login first:")
-        print("  huggingface-cli login")
-        print("  or set HF_TOKEN environment variable")
-
-        # Try to login with token from environment
         hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
         if hf_token:
             print("\nFound HF_TOKEN in environment, attempting login...")
             login(token=hf_token)
         else:
+            print("⚠ Not logged in. Please run: huggingface-cli login")
             sys.exit(1)
 
     api = HfApi()
-
     # Create repository
     print(f"📦 Creating repository: {repo_id}")
     try:
-        create_repo(
-            repo_id=repo_id,
-            repo_type="model",
-            private=private,
-            exist_ok=True,
-        )
+        create_repo(repo_id=repo_id, repo_type="model", private=private, exist_ok=True)
         print(f"✓ Repository created/verified: {repo_id}")
     except Exception as e:
         print(f"⚠ Warning: Could not create repository: {e}")
@@ -134,15 +127,10 @@ def upload_model_to_hf(
 
     # Prepare commit message
     if commit_message is None:
-        if has_adapter:
-            commit_message = f"Upload LoRA adapters from {model_path.name}"
-        else:
-            commit_message = f"Upload finetuned model from {model_path.name}"
+        commit_message = f"Upload {'LoRA adapters' if has_adapter else 'finetuned model'} from {model_path.name}"
 
-    # Upload model
+    # Upload folder
     print(f"\n🚀 Uploading model to {repo_id}...")
-    print("  This may take a few minutes depending on model size...")
-
     try:
         upload_folder(
             folder_path=str(model_path),
@@ -155,20 +143,21 @@ def upload_model_to_hf(
         print(f"❌ Upload failed: {e}")
         raise
 
-    # Get repository URL
     repo_url = f"https://huggingface.co/{repo_id}"
 
     print(f"\n{'='*60}")
     print("✅ Upload Complete!")
     print(f"{'='*60}")
-    print(f"Repository URL: {repo_url}")
-    print(f"\nTo use this model:")
-    print(f"  from transformers import AutoModelForCausalLM")
-    print(f"  model = AutoModelForCausalLM.from_pretrained('{repo_id}')")
+    print(f"Repository URL: {repo_url}\n")
+
+    # Usage instructions
+    print("To use this model:")
+    print(f"  from unsloth import FastVisionModel")
+    print(f"  model, processor = FastVisionModel.from_pretrained('{repo_id}')")
     if has_adapter:
-        print(f"\n  # For LoRA adapters:")
+        print("\n  # For LoRA adapters:")
         print(f"  from peft import PeftModel")
-        print(f"  base_model = AutoModelForCausalLM.from_pretrained('Amshaker/Mobile-VideoGPT-0.5B')")
+        print(f"  base_model, processor = FastVisionModel.from_pretrained('unsloth/gemma-3n-E4B-it')")
         print(f"  model = PeftModel.from_pretrained(base_model, '{repo_id}')")
     print(f"{'='*60}")
 
@@ -176,38 +165,12 @@ def upload_model_to_hf(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Upload finetuned Mobile-VideoGPT model to HuggingFace Hub"
-    )
-    parser.add_argument(
-        "--model_path",
-        type=str,
-        required=True,
-        help="Path to the finetuned model directory",
-    )
-    parser.add_argument(
-        "--repo_name",
-        type=str,
-        default=None,
-        help=f"Name for the HuggingFace repository (default: qved-finetune-TIMESTAMP)",
-    )
-    parser.add_argument(
-        "--org",
-        type=str,
-        default=DEFAULT_ORG,
-        help=f"HuggingFace organization name (default: {DEFAULT_ORG})",
-    )
-    parser.add_argument(
-        "--private",
-        action="store_true",
-        help="Create a private repository",
-    )
-    parser.add_argument(
-        "--commit_message",
-        type=str,
-        default=None,
-        help="Custom commit message for the upload",
-    )
+    parser = argparse.ArgumentParser(description="Upload finetuned Gemma3N-E2B model to HuggingFace Hub")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to the finetuned model directory")
+    parser.add_argument("--repo_name", type=str, default=None, help="HuggingFace repository name")
+    parser.add_argument("--org", type=str, default=DEFAULT_ORG, help="HuggingFace organization name")
+    parser.add_argument("--private", action="store_true", help="Create a private repository")
+    parser.add_argument("--commit_message", type=str, default=None, help="Custom commit message")
 
     args = parser.parse_args()
 
