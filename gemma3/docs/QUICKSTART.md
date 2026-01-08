@@ -64,13 +64,17 @@ This will:
 ### 5. Evaluate Model
 
 ```bash
-# Run inference on test set
+# Run inference on test set with evaluation report
 bash scripts/run_inference.sh \
-  --model_path results/qved_finetune_gemma3n_E2B/checkpoint-70
+  --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit
+
+# Test with base model for comparison
+bash scripts/run_inference.sh \
+  --model_path unsloth/gemma-3n-E4B-it
 
 # Outputs:
-# - results/.../test_predictions.json
-# - results/.../test_evaluation_report.xlsx
+# - results/test_inference_<model>/test_predictions.json
+# - results/test_inference_<model>/test_evaluation_report.xlsx (BERT/ROUGE/METEOR metrics)
 ```
 
 ---

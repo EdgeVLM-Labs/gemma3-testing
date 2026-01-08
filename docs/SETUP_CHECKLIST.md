@@ -184,16 +184,14 @@ bash scripts/finetune_qved.sh
 
 ### Run inference:
 ```bash
-python gemma3n_batch_inference.py \
-  --model google/gemma-3n-E2B \
-  --video_folder your_videos/ \
-  --output results.csv
-```
+# Single video inference
+python utils/infer_qved.py \
+  --model_path unsloth/gemma-3n-E4B-it \
+  --video_path sample_videos/00000340.mp4
 
-### Generate evaluation report:
-```bash
+# Batch inference on test set with evaluation report
 bash scripts/run_inference.sh \
-  --model_path results/qved_finetune_gemma3n_E2B/checkpoint-70
+  --model_path outputs/gemma3n_finetune_merged_16bit
 ```
 
 ---
