@@ -281,6 +281,8 @@ def main():
     # Wandb configuration
     parser.add_argument("--wandb_project", type=str, default="Finetune-gemma3n",
                        help="Wandb project name")
+    parser.add_argument("--wandb_entity", type=str, default=None,
+                       help="Wandb entity (username or team name)")
     parser.add_argument("--wandb_run_name", type=str, default=None,
                        help="Wandb run name")
     parser.add_argument("--hf_token", type=str, default=None,
@@ -321,10 +323,15 @@ def main():
     
     # Initialize wandb
     run_name = args.wandb_run_name or f"gemma-3n-finetune-{args.num_samples if args.hf_dataset else 'qved'}"
-    wandb.init(
-        project=args.wandb_project,
-        name=run_name,
-    )
+    wandb_config = {
+        "project": args.wandb_project,
+        "name": run_name,
+        "dir": args.output_dir,
+    }
+    if args.wandb_entity:
+        wandb_config["entity"] = args.wandb_entity
+    
+    wandb.init(**wandb_config)
     
     print("="*80)
     print("Gemma-3N Fine-tuning with Unsloth FastVisionModel")

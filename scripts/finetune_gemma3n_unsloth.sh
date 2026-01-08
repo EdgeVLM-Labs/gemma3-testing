@@ -63,6 +63,7 @@ NUM_FRAMES=8
 
 # Wandb configuration
 WANDB_PROJECT="Finetune-gemma3n"
+WANDB_ENTITY="fyp-21"  # Your wandb entity (username or team)
 WANDB_RUN_NAME="gemma-3n-finetune-$(date +%Y%m%d_%H%M%S)"
 
 # HuggingFace upload (optional)
@@ -115,6 +116,7 @@ CMD="python gemma3_finetune_unsloth.py \
     --lora_dropout $LORA_DROPOUT \
     --num_frames $NUM_FRAMES \
     --wandb_project $WANDB_PROJECT \
+    --wandb_entity $WANDB_ENTITY \
     --wandb_run_name $WANDB_RUN_NAME \
     --output_dir $OUTPUT_DIR \
     $RUN_EVAL \
