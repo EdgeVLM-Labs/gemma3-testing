@@ -14,13 +14,17 @@ pip uninstall -y torch torchvision torchaudio torchao
 echo "🧹 Clearing pip cache..."
 pip cache purge
 
-# Install PyTorch nightly (has torch.int1 support)
+# Install PyTorch nightly (has torch.int1 support) - get absolute latest
 echo "📦 Installing latest PyTorch nightly with CUDA 12.1..."
-pip install --force-reinstall --upgrade --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+pip install --force-reinstall --no-cache-dir --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
 
 # Install TorchAO nightly
 echo "⚡ Installing TorchAO nightly..."
-pip install --force-reinstall --upgrade --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu121
+pip install --force-reinstall --no-cache-dir --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu121
+
+# Reinstall unsloth to ensure compatibility
+echo "🦥 Reinstalling Unsloth..."
+pip install --force-reinstall --no-cache-dir unsloth unsloth_zoo
 
 # Verify installation
 echo ""
