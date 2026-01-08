@@ -10,6 +10,7 @@ Usage:
     python utils/generate_test_report.py --predictions test_predictions.json --output test_report.xlsx
 """
 
+import os
 import json
 import argparse
 import numpy as np
