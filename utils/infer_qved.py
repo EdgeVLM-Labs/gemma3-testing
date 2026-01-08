@@ -28,7 +28,7 @@ logging.getLogger('transformers.modeling_utils').setLevel(logging.CRITICAL)
 import torch
 import cv2
 from PIL import Image
-from unsloth import FastModel
+from unsloth import FastVisionModel
 from transformers import TextStreamer
 
 
@@ -76,17 +76,14 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
 
 
 def load_model(model_name: str = "unsloth/gemma-3n-E4B-it", device: str = "cuda"):
-    """Load Gemma-3N model using Unsloth FastModel."""
+    """Load Gemma-3N model using Unsloth FastVisionModel."""
     print(f"📦 Loading model: {model_name}...")
     
-    torch._dynamo.config.recompile_limit = 64
-    
-    model, tokenizer = FastModel.from_pretrained(
+    model, tokenizer = FastVisionModel.from_pretrained(
         model_name=model_name,
         dtype=None,  # None for auto detection
-        max_seq_length=1024,
+        max_seq_length=50000,
         load_in_4bit=False,
-        full_finetuning=False,
         # token="hf_...",  # use one if using gated models
     )
     
