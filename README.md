@@ -9,30 +9,37 @@ Fine-tune Google's **Gemma-3N (unsloth/gemma-3n-E4B-it)** model on video dataset
 ## 🚀 Quick Start
 
 ```bash
-# 1. Setup environment
+# 1. Clone and setup environment
 git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
 bash setup.sh
+
+# If setup says "restart terminal", do this:
+# - Close and reopen terminal, then:
+cd gemma3-testing
+bash setup.sh  # Run again
+
+# 2. Activate environment (always needed in new terminals)
 conda activate gemma3n
 
-# 2. Login to services
+# 3. Login to services
 wandb login
 huggingface-cli login
 
-# 3. Prepare dataset
+# 4. Prepare dataset
 python dataset.py download --max-per-class 5
 python dataset.py prepare
 
-# 4. Fine-tune model (uses unsloth/gemma-3n-E4B-it)
+# 5. Fine-tune model (uses unsloth/gemma-3n-E4B-it)
 bash scripts/finetune_gemma3n_unsloth.sh
 
-# 5. Run inference
+# 6. Run inference
 python utils/infer_qved.py \
     --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit \
     --video_path sample_videos/00000340.mp4 \
     --prompt "Analyze the exercise form shown in this video"
 
-# 6. Evaluate model (limit to 50 samples for quick test)
+# 7. Evaluate model (limit to 50 samples for quick test)
 python eval/eval_gemma3n.py \
     --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit \
     --eval_json dataset/qved_val.json \
@@ -59,24 +66,54 @@ python eval/eval_gemma3n.py \
 
 ## 🔧 Installation
 
-### 1. Clone Repository
+### Step-by-Step Setup Process
+
+#### 1. Clone Repository
 
 ```bash
 git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
 ```
 
-### 2. Run Setup Script
-
-The setup script automatically:
-- Installs Miniconda (if not present)
-- Creates Python 3.11 environment named `gemma3n`
-- Installs PyTorch with CUDA support
-- Installs Unsloth and all dependencies
-- Configures environment for optimal performance
+#### 2. Run Setup Script (First Time)
 
 ```bash
 bash setup.sh
+```
+
+**What happens:**
+- **If Miniconda not installed:** 
+  - Script installs Miniconda
+  - **STOPS and asks you to restart terminal**
+  - After restart, run `bash setup.sh` again
+  
+- **If Miniconda already installed:**
+  - Creates `gemma3n` environment with Python 3.11
+  - Activates environment automatically
+  - Installs all dependencies
+  - Environment is ready to use!
+
+#### 3. If Setup Asked You to Restart
+
+After running setup.sh for the first time on a fresh system:
+
+```bash
+# Restart your terminal, then:
+cd gemma3-testing
+bash setup.sh  # Run again to complete installation
+```
+
+The second run will:
+- ✅ Create conda environment
+- ✅ Install all packages
+- ✅ Verify installation
+- ✅ Environment will be activated and ready!
+
+#### 4. For Future Sessions
+
+Every time you open a new terminal:
+
+```bash
 conda activate gemma3n
 ```
 
@@ -88,9 +125,11 @@ conda activate gemma3n
 - Vision: `opencv-python`, `timm`, `Pillow`
 - Dataset: `datasets>=4.3.0`, `huggingface_hub`
 - Training: `wandb` (for tracking)
-- Evaluation: `nltk`, `rouge-score`, `sacrebleu`
+- Evaluation: `nltk`, `rouge-score`, `sacrebleu`, `openpyxl`, `sentence-transformers`
 
-### 3. Authenticate Services
+### 5. Authenticate Services
+
+After setup completes, login to required services:
 
 ```bash
 # HuggingFace (required - for models and datasets)
@@ -102,9 +141,21 @@ wandb login
 # Paste your API key from: https://wandb.ai/authorize
 ```
 
-### 4. Verify Installation
+**Note:** The setup script will prompt you for these logins at the end.
+
+### 6. Verify Installation
+wandb login
+# Paste your API key from: https://wandb.ai/authorize
+```
+
+### 6. Verify Installation
+
+Check that everything is working correctly:
 
 ```bash
+# Ensure environment is activated
+conda activate gemma3n
+
 # Check GPU and CUDA
 nvidia-smi
 nvcc --version
@@ -125,6 +176,47 @@ PyTorch: 2.x.x+cu118
 CUDA available: True
 ✅ Unsloth FastVisionModel ready
 Transformers: 4.56.2
+```
+
+---
+
+## 🔧 Troubleshooting Setup
+
+### Issue: "conda: command not found" after setup
+
+**Solution:**
+```bash
+# Restart terminal, then:
+source ~/.bashrc
+conda activate gemma3n
+```
+
+### Issue: Environment not activating
+
+**Solution:**
+```bash
+# Initialize conda in current shell
+eval "$(conda shell.bash hook)"
+conda activate gemma3n
+
+# Or restart terminal and try again
+```
+
+### Issue: "Setup failed during package installation"
+
+**Solution:**
+```bash
+# Delete environment and start fresh
+conda env remove -n gemma3n
+bash setup.sh
+```
+
+### Issue: ImportError for specific packages
+
+**Solution:**
+```bash
+conda activate gemma3n
+pip install -r requirements.txt
 ```
 
 ---

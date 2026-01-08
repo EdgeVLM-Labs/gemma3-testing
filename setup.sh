@@ -3,37 +3,70 @@
 # Setup Script for Gemma-3N Fine-tuning with Unsloth
 # ==========================================
 
+set -e  # Exit on error
+
 echo "🔧 Setting up Gemma-3N fine-tuning environment..."
+echo ""
 
 # ----------------------------
 # Miniconda installation
 # ----------------------------
 if ! command -v conda &> /dev/null; then
     echo "📦 Installing Miniconda..."
-    cd ..
+    ORIGINAL_DIR=$(pwd)
+    cd /tmp
     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
     bash miniconda.sh -b -p $HOME/miniconda
+    
+    # Initialize conda
     export PATH="$HOME/miniconda/bin:$PATH"
-    source $HOME/miniconda/etc/profile.d/conda.sh
-
+    eval "$($HOME/miniconda/bin/conda shell.bash hook)"
+    
     conda init bash
-    source ~/.bashrc
-
-    echo "✅ Accepting Conda Terms of Service..."
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+    
+    echo ""
+    echo "✅ Miniconda installed successfully!"
+    echo ""
+    echo "⚠️  IMPORTANT: You must restart your terminal or run:"
+    echo "    source ~/.bashrc"
+    echo ""
+    echo "Then re-run this script to continue setup:"
+    echo "    bash setup.sh"
+    echo ""
+    cd "$ORIGINAL_DIR"
+    exit 0
 else
     echo "✅ Conda already installed"
+    # Make sure conda is initialized in current shell
+    eval "$(conda shell.bash hook)" 2>/dev/null || true
 fi
 
 # ----------------------------
 # Create and activate environment
 # ----------------------------
-echo "📦 Creating Conda environment..."
-conda create --name=gemma3n python=3.11 -y
+echo ""
+echo "📦 Creating Conda environment 'gemma3n' with Python 3.11..."
+conda create --name gemma3n python=3.11 -y
+
+echo ""
+echo "🔄 Activating environment..."
+eval "$(conda shell.bash hook)"
 conda activate gemma3n
 
+# Verify activation
+if [ "$CONDA_DEFAULT_ENV" != "gemma3n" ]; then
+    echo "❌ Failed to activate conda environment"
+    echo "Please run manually:"
+    echo "  conda activate gemma3n"
+    echo "  bash setup.sh"
+    exit 1
+fi
+
+echo "✅ Environment 'gemma3n' activated"
+echo ""
+
 # Upgrade pip first
+echo "📦 Upgrading pip..."
 pip install --upgrade pip
 
 # ----------------------------
@@ -140,10 +173,22 @@ fi
 
 echo ""
 echo "✅ Setup complete!"
-echo "🚀 Gemma-3N fine-tuning environment is ready."
+echo "="*80
+echo "🚀 Gemma-3N fine-tuning environment is ready!"
+echo "="*80
 echo ""
-echo "To activate the environment, run:"
-echo "  conda activate gemma3n"
+echo "📋 Current environment: $CONDA_DEFAULT_ENV"
 echo ""
-echo "To start fine-tuning, run:"
-echo "  python gemma3_finetune_unsloth.py --help"
+echo "Next steps:"
+echo "1. The environment is already activated in this session"
+echo ""
+echo "2. For future sessions, activate with:"
+echo "   conda activate gemma3n"
+echo ""
+echo "3. Start fine-tuning:"
+echo "   bash scripts/finetune_gemma3n_unsloth.sh"
+echo ""
+echo "4. Or run manual training:"
+echo "   python gemma3_finetune_unsloth.py --help"
+echo ""
+echo "="*80
