@@ -111,11 +111,11 @@ def run_inference(
     ]
     
     # Tokenize with chat template
-    input_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = tokenizer(
-        frames,
-        input_text,
-        add_special_tokens=False,
+    inputs = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
         return_tensors="pt",
     ).to(device)
     
@@ -127,25 +127,22 @@ def run_inference(
         output_ids = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
+            temperature=0.1,
+            do_sample=True,
             use_cache=True,
-            temperature=1.5,
-            min_p=0.1,
         )
         end_time = time.time()
         generation_time = end_time - start_time
     
-    # Decode output
-    output_token_count = output_ids.shape[1]
-    generated_token_count = output_token_count - input_token_count
+    # Decode output - only the NEW tokens (the answer)
+    input_length = inputs['input_ids'].shape[1]
+    new_tokens = output_ids[0][input_length:]
+    response_text = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+    
+    generated_token_count = len(new_tokens)
     tokens_per_second = generated_token_count / generation_time if generation_time > 0 else 0
     
-    outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
-    
-    # Extract only the assistant's response (after the last "assistant\n\n")
-    if "assistant\n\n" in outputs:
-        outputs = outputs.split("assistant\n\n")[-1].strip()
-    
-    return outputs, {
+    return response_text, {
         'generated_tokens': generated_token_count,
         'generation_time': generation_time,
         'tokens_per_second': tokens_per_second
