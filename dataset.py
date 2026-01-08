@@ -522,27 +522,34 @@ def clean_dataset():
 # ============================================
 # Step 4: Copy Videos for Inference
 # ============================================
-def copy_for_inference(num_videos: int = 5, output_folder: str = "videos"):
+def copy_for_inference(num_videos: int = None, output_folder: str = "videos"):
     """
-    Copy N random videos from dataset to a flat folder for batch inference.
+    Copy videos from cleaned_dataset to a flat folder for batch inference.
     
     Args:
-        num_videos: Number of videos to copy (default: 5)
+        num_videos: Number of videos to copy (default: None = all videos)
         output_folder: Destination folder name (default: videos)
     """
     print(f"\n{'='*60}")
-    print(f"📋 Copying {num_videos} videos for batch inference")
+    if num_videos:
+        print(f"📋 Copying {num_videos} videos for batch inference")
+    else:
+        print(f"📋 Copying all videos for batch inference")
     print(f"{'='*60}\n")
     
-    # Check if dataset exists
-    if not LOCAL_DIR.exists():
-        print(f"❌ Error: Dataset folder '{LOCAL_DIR}' not found.")
-        print("   Please run 'python dataset.py download' first.")
+    # Check if cleaned dataset exists, fallback to original dataset
+    source_dir = CLEANED_DATASET_PATH if CLEANED_DATASET_PATH.exists() else LOCAL_DIR
+    
+    if not source_dir.exists():
+        print(f"❌ Error: Dataset folder '{source_dir}' not found.")
+        print("   Please run 'python dataset.py download' and 'python dataset.py clean' first.")
         return
+    
+    print(f"📂 Source: {source_dir}")
     
     # Collect all video files
     video_files = []
-    for video_path in LOCAL_DIR.rglob(f"*{FILE_EXT}"):
+    for video_path in source_dir.rglob(f"*{FILE_EXT}"):
         if video_path.is_file():
             video_files.append(video_path)
     
@@ -552,10 +559,14 @@ def copy_for_inference(num_videos: int = 5, output_folder: str = "videos"):
     
     print(f"✅ Found {len(video_files)} videos in dataset")
     
-    # Sample random videos
-    num_to_copy = min(num_videos, len(video_files))
-    random.seed(RANDOM_SEED)
-    selected_videos = random.sample(video_files, num_to_copy)
+    # Sample videos or copy all
+    if num_videos is None:
+        selected_videos = video_files
+        num_to_copy = len(video_files)
+    else:
+        num_to_copy = min(num_videos, len(video_files))
+        random.seed(RANDOM_SEED)
+        selected_videos = random.sample(video_files, num_to_copy)
     
     # Create output folder
     output_path = Path(output_folder)
@@ -566,14 +577,13 @@ def copy_for_inference(num_videos: int = 5, output_folder: str = "videos"):
     copied = []
     
     for i, video_src in enumerate(selected_videos, 1):
-        # Create unique filename: classname_originalname.mp4
-        class_name = video_src.parent.name
-        video_dst = output_path / f"{class_name}_{video_src.name}"
+        # Keep original filename without renaming
+        video_dst = output_path / video_src.name
         
         try:
             shutil.copy2(video_src, video_dst)
             copied.append(str(video_dst))
-            print(f"  [{i}/{num_to_copy}] ✓ {video_src.name} → {video_dst.name}")
+            print(f"  [{i}/{num_to_copy}] ✓ {video_src.name}")
         except Exception as e:
             print(f"  [{i}/{num_to_copy}] ✗ Failed to copy {video_src.name}: {e}")
     
@@ -620,8 +630,8 @@ Examples:
     parser.add_argument(
         "--num-videos",
         type=int,
-        default=5,
-        help="Number of videos to copy for inference (default: 5)"
+        default=None,
+        help="Number of videos to copy for inference (default: None = all videos)"
     )
     parser.add_argument(
         "--output",

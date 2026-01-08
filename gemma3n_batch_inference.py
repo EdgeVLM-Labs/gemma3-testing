@@ -142,7 +142,8 @@ def process_videos(
     prompt: str,
     num_frames: int = 8,
     max_new_tokens: int = 256,
-    show_stream: bool = False
+    show_stream: bool = False,
+    max_videos: Optional[int] = None
 ):
     """
     Process all videos in a folder and save results to CSV.
@@ -156,6 +157,7 @@ def process_videos(
         num_frames: Number of frames to extract per video
         max_new_tokens: Maximum tokens to generate
         show_stream: Whether to show streaming output
+        max_videos: Maximum number of videos to process (default: None = all videos)
     """
     results = []
     
@@ -171,9 +173,16 @@ def process_videos(
         print(f"❌ Error: No video files found in {video_folder}")
         return
     
-    print(f"\n{'='*60}")
-    print(f"Found {len(video_files)} videos. Starting processing...")
-    print(f"{'='*60}\n")
+    # Limit number of videos if max_videos is specified
+    if max_videos is not None and max_videos > 0:
+        video_files = video_files[:max_videos]
+        print(f"\n{'='*60}")
+        print(f"Found {len(video_files)} videos (limited to {max_videos}). Starting processing...")
+        print(f"{'='*60}\n")
+    else:
+        print(f"\n{'='*60}")
+        print(f"Found {len(video_files)} videos. Starting processing...")
+        print(f"{'='*60}\n")
 
     for idx, video_file in enumerate(video_files, 1):
         print(f"[{idx}/{len(video_files)}] Processing: {video_file.name}")
@@ -279,6 +288,12 @@ def main():
         action="store_true",
         help="Show streaming output during inference"
     )
+    parser.add_argument(
+        "--max_videos",
+        type=int,
+        default=None,
+        help="Maximum number of videos to process (default: None = all videos)"
+    )
     
     args = parser.parse_args()
     
@@ -294,7 +309,8 @@ def main():
         prompt=args.prompt,
         num_frames=args.num_frames,
         max_new_tokens=args.max_new_tokens,
-        show_stream=args.show_stream
+        show_stream=args.show_stream,
+        max_videos=args.max_videos
     )
 
 

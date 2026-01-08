@@ -45,17 +45,16 @@ huggingface-cli login
 #   - Generate token at https://huggingface.co/settings/tokens
 #   - Request access to google/gemma-3n-E2B model
 
-# 7. Download and prepare dataset
+# 7. Download, clean, copy, and prepare dataset (recommended workflow)
 python dataset.py download          # Download 5 videos per exercise class
-python dataset.py prepare           # Create train/val/test splits
+python dataset.py clean             # Filter low-quality videos
+python dataset.py copy              # Copy all cleaned videos to videos/ folder (no renaming)
+python dataset.py prepare           # Create train/val/test splits from cleaned data
 
-# 8. Copy videos for batch inference testing
-python dataset.py copy --num-videos 5  # Copy 5 videos to videos/ folder
-
-# 9. Verify setup
+# 8. Verify setup
 bash scripts/verify_qved_setup.sh
 
-# 10. (Optional) Run quick inference test with Unsloth FastModel
+# 9. (Optional) Run quick inference test with Unsloth FastModel
 python gemma3n_batch_inference.py \
   --model unsloth/gemma-3n-E4B-it \
   --video_folder videos \
