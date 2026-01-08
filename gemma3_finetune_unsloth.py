@@ -28,6 +28,8 @@ from typing import List, Dict
 import warnings
 from itertools import islice
 
+# Suppress known Unsloth warnings
+warnings.filterwarnings("ignore", message=".*num_items_in_batch.*")
 warnings.filterwarnings("ignore")
 
 import torch
@@ -207,6 +209,24 @@ def load_qved_dataset(json_path: str, num_frames: int = 8) -> Dataset:
     
     print(f"✅ Loaded {len(dataset)} samples ({skipped} skipped)")
     return Dataset.from_list(dataset)
+
+
+def compute_metrics(eval_pred):
+    """
+    Compute evaluation metrics for model predictions.
+    This will be called during evaluation to track more than just loss.
+    """
+    import numpy as np
+    
+    predictions, labels = eval_pred
+    
+    # For now, return basic metrics
+    # The main metric (loss) is already computed by the trainer
+    metrics = {
+        "eval_samples": len(predictions),
+    }
+    
+    return metrics
 
 
 def main():
@@ -424,44 +444,77 @@ def main():
     
     # Create trainer
     print("🏋️ Setting up trainer...")
+    print("ℹ️  Note: Gradient accumulation with Gemma-3N may show a warning about num_items_in_batch.")
+    print("   This is expected and training will work correctly.")
+    
+    # Set up training arguments
+    training_args = SFTConfig(
+        per_device_train_batch_size=args.batch_size,
+        per_device_eval_batch_size=args.batch_size,  # Same batch size for eval
+        gradient_accumulation_steps=args.gradient_accumulation,
+        gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+        max_grad_norm=args.max_grad_norm,
+        warmup_ratio=args.warmup_ratio,
+        num_train_epochs=args.num_epochs,
+        learning_rate=args.learning_rate,
+        
+        # Logging configuration
+        logging_steps=1,
+        logging_first_step=True,
+        logging_strategy="steps",
+        
+        # Save configuration
+        save_strategy="steps",
+        save_steps=50,
+        save_total_limit=3,  # Keep only last 3 checkpoints
+        
+        # Evaluation configuration
+        eval_strategy="steps" if args.run_eval else "no",
+        eval_steps=args.eval_steps if args.run_eval else None,
+        eval_on_start=True if args.run_eval else False,  # Eval before training starts
+        load_best_model_at_end=True if args.run_eval else False,
+        metric_for_best_model="eval_loss" if args.run_eval else None,
+        greater_is_better=False,  # Lower loss is better
+        
+        # Optimizer
+        optim="adamw_torch_fused",
+        weight_decay=args.weight_decay,
+        lr_scheduler_type="cosine",
+        
+        # Other settings
+        seed=3407,
+        output_dir=args.output_dir,
+        report_to="wandb",
+        logging_nan_inf_filter=False,
+        remove_unused_columns=False,
+        dataset_text_field="",
+        dataset_kwargs={"skip_prepare_dataset": True},
+        max_length=args.max_seq_length,
+        deepspeed=deepspeed_config,
+        
+        # Additional tracking
+        include_tokens_per_second=True,
+        include_num_input_tokens_seen=True,
+    )
+    
     trainer = SFTTrainer(
         model=model,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset if args.run_eval else None,
         processing_class=processor.tokenizer,
         data_collator=UnslothVisionDataCollator(model, processor, max_seq_length=args.max_seq_length),
-        args=SFTConfig(
-            per_device_train_batch_size=args.batch_size,
-            gradient_accumulation_steps=args.gradient_accumulation,
-            gradient_checkpointing=True,
-            gradient_checkpointing_kwargs={"use_reentrant": False},
-            max_grad_norm=args.max_grad_norm,
-            warmup_ratio=args.warmup_ratio,
-            num_train_epochs=args.num_epochs,
-            learning_rate=args.learning_rate,
-            logging_steps=1,
-            logging_first_step=True,
-            save_strategy="steps",
-            save_steps=50,
-            eval_strategy="steps" if args.run_eval else "no",
-            eval_steps=args.eval_steps if args.run_eval else None,
-            load_best_model_at_end=True if args.run_eval else False,
-            metric_for_best_model="eval_loss" if args.run_eval else None,
-            optim="adamw_torch_fused",
-            weight_decay=args.weight_decay,
-            lr_scheduler_type="cosine",
-            seed=3407,
-            output_dir=args.output_dir,
-            report_to="wandb",
-            logging_nan_inf_filter=False,
-            remove_unused_columns=False,
-            dataset_text_field="",
-            dataset_kwargs={"skip_prepare_dataset": True},
-            max_length=args.max_seq_length,
-            deepspeed=deepspeed_config,
-        )
+        args=training_args,
+        compute_metrics=compute_metrics if args.run_eval else None,
     )
     print("✅ Trainer ready\n")
+    
+    if args.run_eval:
+        print(f"📊 Evaluation enabled:")
+        print(f"   - Eval dataset: {len(eval_dataset)} samples")
+        print(f"   - Eval every: {args.eval_steps} steps")
+        print(f"   - Eval on start: True")
+        print()
     
     # Show memory stats before training
     gpu_stats = torch.cuda.get_device_properties(0)

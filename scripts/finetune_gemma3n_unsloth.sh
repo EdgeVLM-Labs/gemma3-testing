@@ -71,10 +71,10 @@ UPLOAD_TO_HF=""  # Set to "--upload_to_hf" to auto-upload after training
 HF_REPO_NAME=""  # Leave empty for auto-generated name, or set custom name
 HF_PRIVATE=""    # Set to "--hf_private" to make repository private
 
-# Evaluation configuration (optional)
-RUN_EVAL="--run_eval"           # Enable evaluation during training
-EVAL_STEPS=50                    # Run eval every N steps
-SAVE_EVAL_CSV="--save_eval_csv" # Save eval results as CSV
+# Evaluation configuration
+RUN_EVAL="--run_eval"           # Enable evaluation during training (recommended)
+EVAL_STEPS=25                    # Run eval every N steps (more frequent = better tracking)
+SAVE_EVAL_CSV="--save_eval_csv" # Save eval results as CSV after training
 GENERATE_REPORT=""               # Set to "--generate_report" to generate Excel report
 
 # HuggingFace token (optional, set via environment variable)

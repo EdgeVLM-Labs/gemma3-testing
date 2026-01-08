@@ -34,7 +34,7 @@ from peft import PeftModel
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mobilevideogpt.utils import preprocess_input
+from gemma3.utils import preprocess_input
 
 
 def load_model(pretrained_path: str, device: str = "cuda", base_model: str = "google/gemma-3n-E2B"):

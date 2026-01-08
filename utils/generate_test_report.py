@@ -659,16 +659,42 @@ def main():
         args.output = str(pred_path.parent / "test_evaluation_report.xlsx")
         print(f"Output will be saved to: {args.output}")
 
+    # Check if predictions file exists
+    if not os.path.exists(args.predictions):
+        print(f"❌ Error: Predictions file not found: {args.predictions}")
+        print("   Please run inference first to generate predictions.")
+        return 1
+
     # Load predictions
     print(f"Loading predictions from: {args.predictions}")
-    with open(args.predictions, 'r') as f:
-        results = json.load(f)
+    try:
+        with open(args.predictions, 'r') as f:
+            results = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"❌ Error: Invalid JSON in predictions file: {e}")
+        return 1
+    except Exception as e:
+        print(f"❌ Error loading predictions: {e}")
+        return 1
+
+    if not results:
+        print("⚠ Warning: Predictions file is empty")
+        print("   No evaluation report will be generated.")
+        return 1
 
     print(f"Loaded {len(results)} predictions")
 
     # Generate report
-    create_excel_report(results, args.output, use_bert=not args.no_bert)
+    try:
+        create_excel_report(results, args.output, use_bert=not args.no_bert)
+        print(f"\n✅ Report successfully saved to: {args.output}")
+        return 0
+    except Exception as e:
+        print(f"\n❌ Error generating report: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    exit(main())

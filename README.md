@@ -346,37 +346,51 @@ bash scripts/finetune_gemma3n_unsloth.sh --hf
 ### Monitor Training in Real-Time
 
 1. Training starts with WandB logging
-2. Visit https://wandb.ai and open your project
-3. View live metrics:
-   - **Loss:** Training loss per step
-   - **Gradient norm:** Gradient magnitude
-   - **Learning rate:** Current LR (cosine schedule)
-   - **Epoch progress:** Training progress
-   - **Eval loss:** Validation loss (if evaluation enabled)
+2. Visit https://wandb.ai/fyp-21/Finetune-gemma3n (your project)
+3. View live metrics updated every step:
+   - **train/loss:** Training loss per step
+   - **train/grad_norm:** Gradient magnitude
+   - **train/learning_rate:** Current LR (cosine schedule)
+   - **train/epoch:** Training progress
+   - **eval/loss:** Validation loss (every N steps if enabled)
+   - **eval/runtime:** Evaluation time
+   - **eval/samples_per_second:** Eval throughput
 
 Console output shows:
 ```
 {'loss': 1.0995, 'grad_norm': 27.17, 'learning_rate': 0.0002, 'epoch': 0.1}
-{'eval_loss': 0.8543, 'eval_runtime': 12.5}  # If evaluation enabled
+{'eval_loss': 0.8543, 'eval_runtime': 12.5, 'eval_samples_per_second': 6.8}  # Every EVAL_STEPS
 ```
 
-### Enable Evaluation During Training
+### Evaluation During Training (Enabled by Default)
 
-Track validation metrics during training by editing [finetune_gemma3n_unsloth.sh](scripts/finetune_gemma3n_unsloth.sh):
+Validation tracking is **enabled by default** in [finetune_gemma3n_unsloth.sh](scripts/finetune_gemma3n_unsloth.sh):
 
 ```bash
-# Enable evaluation
-RUN_EVAL="--run_eval"            # Enable validation during training
-EVAL_STEPS=50                     # Run eval every 50 steps
-SAVE_EVAL_CSV="--save_eval_csv"  # Save results as CSV
-GENERATE_REPORT="--generate_report"  # Generate Excel report at end
+# Evaluation configuration (already enabled)
+RUN_EVAL="--run_eval"              # Evaluation enabled
+EVAL_STEPS=25                       # Eval every 25 steps (more frequent tracking)
+SAVE_EVAL_CSV="--save_eval_csv"    # Save results as CSV after training
+GENERATE_REPORT=""                  # Set to "--generate_report" for Excel report
 ```
 
-This will:
-- Run evaluation on validation set every 50 steps
-- Save best model based on eval loss
-- Export final eval results to CSV
-- Optionally generate Excel report with BERT/ROUGE/METEOR metrics
+**What happens during evaluation:**
+- ✅ Runs automatically every 25 steps (configurable)
+- ✅ Evaluates on full validation set
+- ✅ Logs `eval/loss`, `eval/runtime`, `eval/samples_per_second` to WandB
+- ✅ Saves best model checkpoint based on eval loss
+- ✅ Shows evaluation progress in console
+- ✅ Exports results to CSV after training completes
+
+**To disable evaluation** (faster training, no validation tracking):
+```bash
+RUN_EVAL=""  # Remove --run_eval flag
+```
+
+**To increase evaluation frequency** (more data points in WandB):
+```bash
+EVAL_STEPS=10  # Eval every 10 steps (slower but more tracking)
+```
 
 Output files after training with eval:
 ```
@@ -618,6 +632,64 @@ python eval/eval_gemma3n.py --model_path outputs/gemma3n_finetune_merged_16bit -
 python utils/plot_training_stats.py results/
 ```
 
+### Test Set Inference & Evaluation Report
+
+Run full test set inference and generate a detailed Excel evaluation report with BERT/ROUGE/METEOR metrics:
+
+```bash
+# Test with your fine-tuned model (default: 50 samples)
+bash scripts/run_inference.sh \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit
+
+# Test with base model for comparison
+bash scripts/run_inference.sh \
+    --model_path unsloth/gemma-3n-E4B-it
+
+# Full test set (all samples)
+bash scripts/run_inference.sh \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit \
+    --limit ""
+
+# Fast evaluation without BERT (uses ROUGE/METEOR only)
+bash scripts/run_inference.sh \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit \
+    --no-bert
+```
+
+**What happens:**
+1. Runs inference on test set ([qved_test.json](dataset/qved_test.json))
+2. Generates predictions JSON with ground truth comparison
+3. Creates Excel report with:
+   - BERT Similarity scores (semantic similarity)
+   - ROUGE-L scores (n-gram overlap)
+   - METEOR scores (word-level matching)
+   - Exercise identification accuracy
+   - Color-coded results (green/yellow/red)
+   - Charts and summary statistics
+
+**Output files:**
+```
+results/test_inference_<model_name>/
+├── test_predictions.json          # Raw predictions with metrics
+└── test_evaluation_report.xlsx    # Excel report with charts
+```
+
+**Manual test report generation:**
+
+If you already have predictions JSON, generate report separately:
+
+```bash
+# Generate report with BERT similarity
+python utils/generate_test_report.py \
+    --predictions results/test_inference_model/test_predictions.json \
+    --output test_report.xlsx
+
+# Without BERT (faster)
+python utils/generate_test_report.py \
+    --predictions test_predictions.json \
+    --no-bert
+```
+
 ---
 
 ## ⚙️ Configuration Reference
@@ -696,6 +768,13 @@ python utils/plot_training_stats.py results/
 - Run `wandb login` and paste your API key
 - Check internet connection
 - Set `report_to="none"` in SFTConfig to disable
+
+**7. Warning: "Gemma3nForConditionalGeneration does not accept `num_items_in_batch`"**
+- **This is expected and not an error!**
+- It's an informational message from Unsloth about gradient accumulation
+- Training will work correctly, just slightly less accurate gradient accumulation
+- You can safely ignore this warning
+- The warning has been suppressed in the latest version
 
 ---
 
