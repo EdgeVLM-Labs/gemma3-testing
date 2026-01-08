@@ -15,7 +15,7 @@ export PATH="$HOME/miniconda/bin:$PATH"
 source $HOME/miniconda/etc/profile.d/conda.sh
 
 conda init bash
-# source ~/.bashrc
+source ~/.bashrc
 
 echo "✅ Accepting Conda Terms of Service..."
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
@@ -130,7 +130,7 @@ wandb login
 
 echo "🤗 Logging into HuggingFace Hub..."
 hf auth login
-
+source ~/.bashrc
 echo "✅ Setup complete!"
 echo "🚀 Gemma-3N E2B environment is ready."
 source ~/.bashrc
