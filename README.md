@@ -17,70 +17,212 @@ This repository provides tools for fine-tuning and inference with **Google Gemma
 
 ### Initial Setup (First Time)
 
+#### **Step 1: System Dependencies**
 ```bash
-# 1. Install system dependencies (Ubuntu/Debian)
+# Install system dependencies (Ubuntu/Debian)
 sudo apt-get update
 sudo apt-get install -y wget git build-essential
+```
 
-# 2. Clone the repository
+#### **Step 2: Clone Repository**
+```bash
 git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
+```
 
-# 3. Run automated setup script (THIS CREATES THE gemma3n ENVIRONMENT)
+#### **Step 3: Environment Setup**
+```bash
+# Run automated setup script (creates gemma3n environment)
 bash setup.sh
 
-# 4. Activate the environment
+# Activate the environment
 conda activate gemma3n
 
-# 5. Accept Conda Terms of Service (required for some packages)
-# NOTE: If you get "EnvironmentNameNotFound", run step 3 first!
+# Accept Conda Terms of Service
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+```
 
-# 6. Login to Hugging Face (required for gated models)
+#### **Step 4: Authentication**
+```bash
+# Login to Hugging Face (required for gated models)
 huggingface-cli login
-# Or: hf auth login
 # You'll need to:
 #   - Create account at https://huggingface.co
 #   - Generate token at https://huggingface.co/settings/tokens
 #   - Request access to google/gemma-3n-E2B model
 
-# 7. Download, clean, copy, and prepare dataset (recommended workflow)
-python dataset.py download          # Download 5 videos per exercise class
-python dataset.py clean             # Filter low-quality videos
-python dataset.py copy              # Copy all cleaned videos to videos/ folder (no renaming)
-python dataset.py prepare           # Create train/val/test splits from cleaned data
+# Login to WandB (for training monitoring)
+wandb login
+```
 
-# 8. Verify setup
+#### **Step 5: Dataset Preparation (Recommended Workflow)**
+```bash
+# Download videos from HuggingFace dataset
+python dataset.py download --max-per-class 5
+
+# Clean dataset (filter low-quality videos)
+python dataset.py clean
+
+# Copy cleaned videos to inference folder (keeps original filenames)
+python dataset.py copy
+
+# Create train/val/test splits from cleaned dataset
+python dataset.py prepare
+
+# Verify everything is set up correctly
 bash scripts/verify_qved_setup.sh
+```
 
-# 9. (Optional) Run quick inference test with Unsloth FastModel
+**Dataset Workflow Summary:**
+1. **Download** → Downloads raw videos to `dataset/`
+2. **Clean** → Filters quality and saves to `cleaned_dataset/`
+3. **Copy** → Copies cleaned videos to `videos/` for inference
+4. **Prepare** → Creates train/val/test JSON splits in `dataset/`
+
+#### **Step 6: Test Inference (Optional)**
+```bash
+# Test batch inference on 5 videos (default)
 python gemma3n_batch_inference.py \
   --model unsloth/gemma-3n-E4B-it \
   --video_folder videos \
-  --output results/test.csv
+  --output results/test_inference.csv
 
-# 10. (If needed) Fix dependencies for fine-tuning
-bash finetune_env.sh  # Complete environment setup for training
+# Or test single video
+python utils/infer_qved.py \
+  --model_path unsloth/gemma-3n-E4B-it \
+  --video_path videos/sample.mp4 \
+  --prompt "Analyze the exercise form shown in this video"
 ```
+
+---
+
+## 🔧 Troubleshooting
+
+### Common Issues and Fixes
+
+#### **Issue 1: `module 'torch' has no attribute 'int1'`**
+**Solution:** Install PyTorch nightly with torch.int1 support
+```bash
+bash fix_torch_int1.sh
+```
+
+#### **Issue 2: `ImportError: cannot import name 'dequantize_module_weight'`**
+**Solution:** Install compatible unsloth and peft versions
+```bash
+pip install --upgrade unsloth unsloth_zoo
+```
+
+#### **Issue 3: `ModuleNotFoundError: No module named 'mamba_ssm'`**
+**Solution:** Reinstall mamba-ssm
+```bash
+pip uninstall -y mamba-ssm
+pip cache purge
+pip install mamba-ssm --no-cache-dir --no-build-isolation
+```
+
+#### **Issue 4: Torchvision version mismatch**
+**Solution:** Run the fix script which handles all version issues
+```bash
+bash fix_torch_int1.sh
+```
+
+#### **Issue 5: Training dependencies not working**
+**Solution:** Run complete fine-tuning environment setup
+```bash
+bash finetune_env.sh
+```
+
+This installs:
+- PyTorch nightly with CUDA 12.1
+- TorchAO with torch.int1 support
+- Unsloth & Unsloth Zoo
+- Mamba-SSM (recompiled)
+- All training dependencies
+
+---
+
+## 📚 Usage Guide
 
 ### Daily Usage (After Initial Setup)
 
+#### **Activate Environment**
 ```bash
-# Activate environment
 conda activate gemma3n
+```
 
-# Fine-tune on QVED dataset
-bash scripts/finetune_qved.sh
+#### **Fine-tuning Workflow**
 
-# Run LoRA fine-tuning with Unsloth
+**Option 1: Unsloth Fine-tuning (Recommended - Faster)**
+```bash
+# Prepare environment (first time only)
+bash finetune_env.sh
+
+# Run fine-tuning with Unsloth
 bash scripts/finetune_gemma3n_unsloth.sh
 
-# Run inference on videos
+# This will:
+# - Load unsloth/gemma-3n-E4B-it
+# - Train with LoRA (r=16, alpha=32)
+# - Save adapter to results/gemma3n_E4B_finetune
+# - Save merged model to results/gemma3n_E4B_finetune_merged
+```
+
+**Option 2: Standard Fine-tuning**
+```bash
+# Full training with DeepSpeed
+bash scripts/finetune_qved.sh
+
+# This uses:
+# - Amshaker/Mobile-VideoGPT-0.5B (Qwen2-based)
+# - LoRA (r=64, alpha=128)
+# - Effective batch size: 64
+```
+
+#### **Inference Workflow**
+
+**Batch Inference (Multiple Videos)**
+```bash
+# Process up to 5 videos (default)
 python gemma3n_batch_inference.py \
-  --model google/gemma-3n-E2B \
-  --video_folder your_videos/ \
-  --output results.csv
+  --model unsloth/gemma-3n-E4B-it \
+  --video_folder videos \
+  --output results/batch_results.csv
+
+# Process specific number of videos
+python gemma3n_batch_inference.py \
+  --model unsloth/gemma-3n-E4B-it \
+  --video_folder videos \
+  --output results/batch_results.csv \
+  --max_videos 10
+
+# Use fine-tuned model
+python gemma3n_batch_inference.py \
+  --model results/gemma3n_E4B_finetune_merged \
+  --video_folder videos \
+  --output results/finetuned_results.csv
+```
+
+**Single Video Inference**
+```bash
+python utils/infer_qved.py \
+  --model_path unsloth/gemma-3n-E4B-it \
+  --video_path videos/sample.mp4 \
+  --prompt "Analyze the exercise form shown in this video"
+```
+
+#### **Dataset Management**
+```bash
+# Download more videos
+python dataset.py download --max-per-class 10
+
+# Clean and prepare
+python dataset.py clean
+python dataset.py copy
+python dataset.py prepare
+
+# Or run all steps at once
+python dataset.py all --max-per-class 10
 ```
 
 ---
@@ -102,11 +244,14 @@ python gemma3n_batch_inference.py \
 
 ```
 gemma3-testing/
-├── dataset.py            # 🆕 Unified dataset management (download/prepare/clean)
-├── gemma3n_batch_inference.py  # Batch inference (Unsloth FastModel)
-├── setup.sh              # Environment setup script
-├── requirements.txt      # Python dependencies
-├── gemma3/               # 🆕 Gemma-3N-E2B implementation
+├── dataset.py                    # 🆕 Unified dataset management
+├── gemma3n_batch_inference.py    # Batch video inference (supports --max_videos)
+├── gemma3_finetune_unsloth.py    # Unsloth fine-tuning script
+├── setup.sh                      # Initial environment setup
+├── finetune_env.sh               # 🆕 Complete fine-tuning dependencies
+├── fix_torch_int1.sh             # 🆕 Fix PyTorch/TorchAO compatibility
+├── requirements.txt              # Python dependencies
+├── gemma3/                       # 🆕 Gemma-3N-E2B implementation
 │   ├── train/           # Training scripts (train.py, pretrain.py, trainer.py)
 │   ├── model/           # Model architecture (arch, builder, dataloader)
 │   ├── config/          # Configuration files
