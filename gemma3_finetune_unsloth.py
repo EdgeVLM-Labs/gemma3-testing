@@ -166,9 +166,11 @@ def load_qved_dataset(json_path: str, num_frames: int = 8) -> Dataset:
             
         video_path = item.get('video', '')
         
-        # Handle relative paths from dataset.py
+        # Handle relative paths - use videos directory
         if not os.path.isabs(video_path):
-            video_path = os.path.join('dataset', video_path)
+            # Extract just the filename from the path
+            video_filename = os.path.basename(video_path)
+            video_path = os.path.join('videos', video_filename)
         
         if not os.path.exists(video_path):
             print(f"⚠️ Skipping missing video: {video_path}")
@@ -275,6 +277,10 @@ def main():
                        help="Wandb run name")
     parser.add_argument("--hf_token", type=str, default=None,
                        help="HuggingFace API token")
+    
+    # DeepSpeed configuration
+    parser.add_argument("--deepspeed_config", type=str, default=None,
+                       help="Path to DeepSpeed config JSON file (e.g., scripts/zero.json)")
     
     args = parser.parse_args()
     
@@ -389,6 +395,7 @@ def main():
             num_train_epochs=args.num_epochs,
             learning_rate=args.learning_rate,
             logging_steps=1,
+            logging_first_step=True,
             save_strategy="steps",
             save_steps=50,
             optim="adamw_torch_fused",
@@ -397,10 +404,12 @@ def main():
             seed=3407,
             output_dir=args.output_dir,
             report_to="wandb",
+            logging_nan_inf_filter=False,
             remove_unused_columns=False,
             dataset_text_field="",
             dataset_kwargs={"skip_prepare_dataset": True},
             max_length=args.max_seq_length,
+            deepspeed=args.deepspeed_config if hasattr(args, 'deepspeed_config') and args.deepspeed_config else None,
         )
     )
     print("✅ Trainer ready\n")

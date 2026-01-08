@@ -44,10 +44,14 @@ OUTPUT_DIR="outputs/gemma3n_finetune_$(date +%Y%m%d_%H%M%S)"
 BATCH_SIZE=1
 GRAD_ACCUM=4
 LEARNING_RATE=2e-4
-NUM_EPOCHS=3
-MAX_SEQ_LENGTH=50000
+NUM_EPOCHS=1
+MAX_SEQ_LENGTH=2048
 WARMUP_RATIO=0.03
 MAX_GRAD_NORM=0.3
+WEIGHT_DECAY=0.001
+
+# DeepSpeed configuration (optional)
+DEEPSPEED_CONFIG="scripts/zero.json"  # Set to "" to disable DeepSpeed
 WEIGHT_DECAY=0.001
 
 # LoRA configuration
@@ -103,6 +107,12 @@ CMD="python gemma3_finetune_unsloth.py \
     --wandb_project $WANDB_PROJECT \
     --wandb_run_name $WANDB_RUN_NAME \
     --output_dir $OUTPUT_DIR"
+
+# Add DeepSpeed config if specified
+if [ -n "$DEEPSPEED_CONFIG" ] && [ -f "$DEEPSPEED_CONFIG" ]; then
+    CMD="$CMD --deepspeed_config $DEEPSPEED_CONFIG"
+    echo "⚡ Using DeepSpeed: $DEEPSPEED_CONFIG"
+fi
 
 # Add dataset-specific arguments
 if [ "$DATASET_MODE" == "--local" ]; then
