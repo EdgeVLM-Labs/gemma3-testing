@@ -143,7 +143,7 @@ def process_videos(
     num_frames: int = 8,
     max_new_tokens: int = 256,
     show_stream: bool = False,
-    max_videos: Optional[int] = None
+    max_videos: Optional[int] = 5
 ):
     """
     Process all videos in a folder and save results to CSV.
@@ -291,8 +291,8 @@ def main():
     parser.add_argument(
         "--max_videos",
         type=int,
-        default=None,
-        help="Maximum number of videos to process (default: None = all videos)"
+        default=5,
+        help="Maximum number of videos to process (default: 5)"
     )
     
     args = parser.parse_args()

@@ -36,8 +36,9 @@ pip install -r requirements.txt
 # ----------------------------
 # Ensure unsloth and peft compatibility
 # ----------------------------
-echo "🦥 Ensuring unsloth compatibility..."
-pip install --upgrade unsloth>=2026.1.2 peft>=0.17.0,<=0.18.0
+echo "🦥 Installing unsloth and unsloth_zoo..."
+pip install --upgrade unsloth unsloth_zoo
+echo "✅ Unsloth packages installed"
 
 # ----------------------------
 # Optional: Install specific versions for Float8 quantization (Unsloth LoRA fine-tuning)
@@ -82,6 +83,8 @@ cd ..
 # Mamba-SSM for training (VideoMamba encoder)
 # ----------------------------
 echo "🐍 Installing Mamba-SSM..."
+pip uninstall -y torch torchvision torchaudio
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 pip uninstall -y mamba-ssm
 pip cache purge
 pip install mamba-ssm --no-cache-dir --no-build-isolation

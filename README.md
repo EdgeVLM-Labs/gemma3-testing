@@ -59,6 +59,9 @@ python gemma3n_batch_inference.py \
   --model unsloth/gemma-3n-E4B-it \
   --video_folder videos \
   --output results/test.csv
+
+# 10. (If needed) Fix dependencies for fine-tuning
+bash finetune_env.sh  # Complete environment setup for training
 ```
 
 ### Daily Usage (After Initial Setup)

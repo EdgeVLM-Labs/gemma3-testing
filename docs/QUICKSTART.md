@@ -19,6 +19,11 @@ conda activate gemma3n
 hf auth login
 ```
 
+**If you encounter dependency issues (mamba-ssm, unsloth, etc.):**
+```bash
+bash finetune_env.sh  # Complete fine-tuning environment setup
+```
+
 ### 2. Download Sample Dataset
 
 ```bash
