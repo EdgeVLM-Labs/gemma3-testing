@@ -38,7 +38,6 @@ from unsloth.trainer import UnslothVisionDataCollator
 from trl import SFTTrainer, SFTConfig
 from datasets import Dataset, load_dataset, Video
 from huggingface_hub import login, hf_hub_download
-import wandb
 
 # Video processing
 import cv2
@@ -341,17 +340,25 @@ def main():
         print("🔐 Logging into HuggingFace...")
         login(token=args.hf_token)
     
-    # Initialize wandb
-    run_name = args.wandb_run_name or f"gemma-3n-finetune-{args.num_samples if args.hf_dataset else 'qved'}"
-    wandb_config = {
-        "project": args.wandb_project,
-        "name": run_name,
-        "dir": args.output_dir,
-    }
+    # Set environment variables for WandB
+    os.environ["WANDB_PROJECT"] = args.wandb_project
+    os.environ["WANDB_LOG_MODEL"] = "false"  # Don't log model artifacts (too large)
+    os.environ["WANDB_WATCH"] = "false"  # Don't watch gradients (can cause issues)
     if args.wandb_entity:
-        wandb_config["entity"] = args.wandb_entity
+        os.environ["WANDB_ENTITY"] = args.wandb_entity
     
-    wandb.init(**wandb_config)
+    # Set WandB run name
+    run_name = args.wandb_run_name or f"gemma-3n-finetune-{args.num_samples if args.hf_dataset else 'qved'}"
+    os.environ["WANDB_NAME"] = run_name
+    os.environ["WANDB_DIR"] = args.output_dir
+    
+    print(f"📊 WandB Configuration:")
+    print(f"   Project: {args.wandb_project}")
+    if args.wandb_entity:
+        print(f"   Entity: {args.wandb_entity}")
+    print(f"   Run name: {run_name}")
+    print(f"   Output: {args.output_dir}")
+    print()
     
     print("="*80)
     print("Gemma-3N Fine-tuning with Unsloth FastVisionModel")
@@ -725,7 +732,7 @@ def main():
             print(f"You can manually upload later using:")
             print(f"  python utils/hf_upload.py --model_path {merged_dir}")
     
-    wandb.finish()
+    print("\n✅ Training complete!")
 
 
 if __name__ == "__main__":
