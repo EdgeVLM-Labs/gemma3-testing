@@ -45,14 +45,13 @@ BATCH_SIZE=1
 GRAD_ACCUM=4
 LEARNING_RATE=2e-4
 NUM_EPOCHS=1
-MAX_SEQ_LENGTH=2048
+MAX_SEQ_LENGTH=50000
 WARMUP_RATIO=0.03
 MAX_GRAD_NORM=0.3
 WEIGHT_DECAY=0.001
 
 # DeepSpeed configuration (optional)
-DEEPSPEED_CONFIG="scripts/zero.json"  # Set to "scripts/zero.json" to enable DeepSpeed (requires: pip install deepspeed)
-WEIGHT_DECAY=0.001
+DEEPSPEED_CONFIG=""  # Set to "scripts/zero.json" to enable DeepSpeed (requires: pip install deepspeed)
 
 # LoRA configuration
 LORA_R=64
