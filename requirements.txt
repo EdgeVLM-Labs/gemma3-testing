@@ -34,7 +34,9 @@ hf_transfer
 
 # Training utilities
 wandb
-deepspeed
+
+# DeepSpeed (optional - for distributed training)
+# deepspeed  # Uncomment if needed: pip install deepspeed
 
 # Additional utilities
 numpy<2.0
@@ -47,6 +49,7 @@ scikit-learn
 sacrebleu
 evaluate
 nltk
+rouge-score
 sqlitedict
 pytablewriter
 
