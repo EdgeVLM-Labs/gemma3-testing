@@ -186,7 +186,9 @@ Transformers: 4.56.2
 
 ## 🔧 Troubleshooting Setup
 
-### Issue: "conda: command not found" after setup
+### Common Issues and Quick Fixes
+
+#### Issue: "conda: command not found" after setup
 
 **Solution:**
 ```bash
@@ -195,7 +197,16 @@ source ~/.bashrc
 conda activate gemma3n
 ```
 
-### Issue: Environment not activating
+#### Issue: "Terms of Service have not been accepted"
+
+**Solution:**
+The updated setup.sh now handles this automatically! If you still see this error:
+```bash
+conda config --set tos_accepted yes
+bash setup.sh
+```
+
+#### Issue: Environment not activating
 
 **Solution:**
 ```bash
@@ -206,22 +217,26 @@ conda activate gemma3n
 # Or restart terminal and try again
 ```
 
-### Issue: "Setup failed during package installation"
+#### Issue: "Setup failed during package installation"
 
 **Solution:**
 ```bash
-# Delete environment and start fresh
-conda env remove -n gemma3n
-bash setup.sh
+# Activate environment and install manually
+conda activate gemma3n
+pip install -r requirements.txt
 ```
 
-### Issue: ImportError for specific packages
+#### Issue: ImportError for specific packages
 
 **Solution:**
 ```bash
 conda activate gemma3n
-pip install -r requirements.txt
+pip install -r requirements.txt --force-reinstall
 ```
+
+### Full Troubleshooting Guide
+
+For complete troubleshooting steps and solutions, see **[SETUP_TROUBLESHOOTING.md](SETUP_TROUBLESHOOTING.md)**
 
 ---
 
