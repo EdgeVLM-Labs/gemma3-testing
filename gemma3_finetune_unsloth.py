@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import List, Dict
 import warnings
 from itertools import islice
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import partial
 
 # Suppress known Unsloth warnings
 warnings.filterwarnings("ignore", message=".*num_items_in_batch.*")
@@ -45,24 +47,80 @@ import numpy as np
 from PIL import Image
 
 
-def downsample_video(video_path: str, num_frames: int = 8) -> List[Image.Image]:
-    """Extract evenly spaced frames for VLM context."""
+def downsample_video(video_path: str, num_frames: int = 8, timeout: int = 10) -> List[Image.Image]:
+    """Extract evenly spaced frames for VLM context with timeout protection.
     
-    vidcap = cv2.VideoCapture(video_path)
-    total_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-    if total_frames <= 0: 
+    Args:
+        video_path: Path to video file
+        num_frames: Number of frames to extract
+        timeout: Maximum seconds to spend on this video
+    """
+    import signal
+    from contextlib import contextmanager
+    
+    @contextmanager
+    def time_limit(seconds):
+        def signal_handler(signum, frame):
+            raise TimeoutError(f"Video processing timed out after {seconds}s")
+        signal.signal(signal.SIGALRM, signal_handler)
+        signal.alarm(seconds)
+        try:
+            yield
+        finally:
+            signal.alarm(0)
+    
+    try:
+        with time_limit(timeout):
+            vidcap = cv2.VideoCapture(video_path)
+            if not vidcap.isOpened():
+                return []
+            
+            total_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = vidcap.get(cv2.CAP_PROP_FPS)
+            
+            # If total_frames is unreliable, estimate from duration
+            if total_frames <= 0 or total_frames > 100000:
+                duration = vidcap.get(cv2.CAP_PROP_FRAME_COUNT) / fps if fps > 0 else 0
+                if duration > 0:
+                    total_frames = int(duration * fps)
+                else:
+                    return []
+            
+            # Calculate frame indices
+            indices = np.linspace(0, total_frames - 1, min(num_frames, total_frames), dtype=int)
+            frames = []
+            
+            # Use faster sequential reading instead of seeking
+            current_frame = 0
+            for target_idx in sorted(indices):
+                # Skip frames until we reach target
+                while current_frame < target_idx:
+                    ret = vidcap.grab()
+                    if not ret:
+                        break
+                    current_frame += 1
+                
+                # Read the target frame
+                success, image = vidcap.retrieve()
+                if success:
+                    # Resize to reduce memory (224x224 is typical for vision models)
+                    image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_AREA)
+                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    frames.append(Image.fromarray(image))
+                current_frame += 1
+                
+                if len(frames) >= num_frames:
+                    break
+            
+            vidcap.release()
+            return frames
+            
+    except TimeoutError as e:
+        print(f"⏱️ Timeout: {os.path.basename(video_path)} - {str(e)}")
         return []
-    
-    indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
-    frames = []
-    for i in indices:
-        vidcap.set(cv2.CAP_PROP_POS_FRAMES, i)
-        success, image = vidcap.read()
-        if success:
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            frames.append(Image.fromarray(image))
-    vidcap.release()
-    return frames
+    except Exception as e:
+        print(f"⚠️ Error processing {os.path.basename(video_path)}: {str(e)}")
+        return []
 
 
 def convert_to_conversation(sample, num_frames: int = 8, instruction: str = None):
@@ -152,35 +210,14 @@ def load_hf_dataset_streaming(dataset_name: str, split: str, num_samples: int,
     return dataset
 
 
-def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None, max_samples: int = None) -> Dataset:
-    """Load QVED dataset from JSON (prepared by dataset.py) and convert to conversation format."""
-    with open(json_path, 'r') as f:
-        data = json.load(f)
-    
-    dataset = []
-    print(f"📥 Loading QVED dataset from {json_path}...")
-    print(f"📊 Total samples in JSON: {len(data)}")
-    if max_samples:
-        print(f"⚠️  Limiting to first {max_samples} samples for faster training")
-        data = data[:max_samples]
-    if video_dir:
-        print(f"📁 Looking for videos in: {video_dir}")
-    skipped = 0
-    path_not_found = []
-    
-    for idx, item in enumerate(data):
-        # Show progress every 10 samples (more frequent than before)
-        if idx % 10 == 0:
-            print(f"  📹 Processing video {idx + 1}/{len(data)} (loaded {len(dataset)}, skipped {skipped})...")
-            
+def process_single_video(item, num_frames, video_dir, idx, total):
+    """Process a single video item. Returns (success, dataset_entry, error_msg)"""
+    try:
         video_path = item.get('video', '')
         original_path = video_path
         
         # Try multiple path variations to find the video
         video_found = False
-        paths_to_try = []
-        
-        # Extract filename
         video_filename = os.path.basename(video_path)
         
         # Try different path combinations
@@ -195,13 +232,13 @@ def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None
         
         # Add default fallback paths
         paths_to_try.extend([
-            os.path.join('test_videos', video_filename),  # test_videos/filename.mp4
-            os.path.join('/workspace/gemma3-testing/test_videos', video_filename),  # Absolute test_videos path
-            os.path.join('videos', video_filename),  # videos/filename.mp4
-            os.path.join('/workspace/gemma3-testing/videos', video_filename),  # Absolute workspace path
-            os.path.join(os.getcwd(), 'test_videos', video_filename),  # Current dir + test_videos
-            os.path.join(os.getcwd(), 'videos', video_filename),  # Current dir + videos
-            video_filename,  # Just filename in current dir
+            os.path.join('test_videos', video_filename),
+            os.path.join('/workspace/gemma3-testing/test_videos', video_filename),
+            os.path.join('videos', video_filename),
+            os.path.join('/workspace/gemma3-testing/videos', video_filename),
+            os.path.join(os.getcwd(), 'test_videos', video_filename),
+            os.path.join(os.getcwd(), 'videos', video_filename),
+            video_filename,
         ])
         
         # Try each path
@@ -212,24 +249,19 @@ def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None
                 break
         
         if not video_found:
-            if len(path_not_found) < 3:  # Only show first 3 missing paths
-                path_not_found.append(original_path)
-            skipped += 1
-            continue
+            return False, None, f"not_found: {original_path}"
         
-        # Extract frames
-        frames = downsample_video(video_path, num_frames)
+        # Extract frames with timeout
+        frames = downsample_video(video_path, num_frames, timeout=5)
         if not frames:
-            skipped += 1
-            continue
+            return False, None, f"no_frames: {video_filename}"
         
         # Get conversations
         conversations = item.get('conversations', [])
         if len(conversations) < 2:
-            skipped += 1
-            continue
+            return False, None, f"no_conversations: {video_filename}"
         
-        # Build prompt and response (handle both 'value' and 'from' keys)
+        # Build prompt and response
         user_msg = conversations[0].get('value', '')
         assistant_msg = conversations[1].get('value', '')
         
@@ -238,14 +270,79 @@ def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None
         for img in frames:
             user_content.append({"type": "image", "image": img})
         
-        dataset.append({
+        entry = {
             "messages": [
                 {"role": "user", "content": user_content},
                 {"role": "assistant", "content": [{"type": "text", "text": assistant_msg}]}
             ]
-        })
+        }
+        
+        return True, entry, None
+        
+    except Exception as e:
+        return False, None, f"error: {str(e)}"
+
+
+def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None, max_samples: int = None, num_workers: int = 4) -> Dataset:
+    """Load QVED dataset from JSON (prepared by dataset.py) and convert to conversation format."""
+    with open(json_path, 'r') as f:
+        data = json.load(f)
     
-    print(f"✅ Loaded {len(dataset)} samples ({skipped} skipped)")
+    dataset = []
+    print(f"📥 Loading QVED dataset from {json_path}...")
+    print(f"📊 Total samples in JSON: {len(data)}")
+    if max_samples:
+        print(f"⚠️  Limiting to first {max_samples} samples for faster training")
+        data = data[:max_samples]
+    if video_dir:
+        print(f"📁 Looking for videos in: {video_dir}")
+    
+    print(f"🚀 Using {num_workers} parallel workers for video processing...")
+    
+    skipped = 0
+    path_not_found = []
+    errors = {}
+    
+    # Process videos in parallel
+    total = len(data)
+    process_fn = partial(process_single_video, num_frames=num_frames, video_dir=video_dir)
+    
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        # Submit all tasks
+        futures = {executor.submit(process_fn, item, idx, total): idx 
+                  for idx, item in enumerate(data)}
+        
+        # Process completed tasks
+        for future in as_completed(futures):
+            idx = futures[future]
+            
+            # Show progress
+            if (idx + 1) % 10 == 0 or idx == 0:
+                print(f"  📹 Processed {idx + 1}/{total} (loaded {len(dataset)}, skipped {skipped})")
+            
+            try:
+                success, entry, error_msg = future.result()
+                
+                if success:
+                    dataset.append(entry)
+                else:
+                    skipped += 1
+                    if error_msg:
+                        error_type = error_msg.split(':')[0]
+                        errors[error_type] = errors.get(error_type, 0) + 1
+                        if len(path_not_found) < 3 and 'not_found' in error_msg:
+                            path_not_found.append(error_msg.split(': ', 1)[1])
+            except Exception as e:
+                skipped += 1
+                errors['exception'] = errors.get('exception', 0) + 1
+    
+    print(f"\n✅ Loaded {len(dataset)} samples ({skipped} skipped)")
+    
+    # Show error summary
+    if errors:
+        print(f"\n⚠️  Error Summary:")
+        for error_type, count in sorted(errors.items()):
+            print(f"   - {error_type}: {count}")
     
     # Show example paths that were not found
     if path_not_found:
