@@ -305,11 +305,10 @@ def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None
     
     # Process videos in parallel
     total = len(data)
-    process_fn = partial(process_single_video, num_frames=num_frames, video_dir=video_dir)
     
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         # Submit all tasks
-        futures = {executor.submit(process_fn, item, idx, total): idx 
+        futures = {executor.submit(process_single_video, item, num_frames, video_dir, idx, total): idx 
                   for idx, item in enumerate(data)}
         
         # Process completed tasks
@@ -334,6 +333,10 @@ def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None
                             path_not_found.append(error_msg.split(': ', 1)[1])
             except Exception as e:
                 skipped += 1
+                error_str = str(e)
+                # Show first few actual errors for debugging
+                if errors.get('exception', 0) < 3:
+                    print(f"  ⚠️ Error on item {idx}: {error_str[:100]}")
                 errors['exception'] = errors.get('exception', 0) + 1
     
     print(f"\n✅ Loaded {len(dataset)} samples ({skipped} skipped)")
