@@ -32,6 +32,7 @@ DATASET_MODE="${1:---local}"  # Default to local mode (prepared by dataset.py)
 # Local QVED dataset paths (prepared by dataset.py)
 TRAIN_JSON="dataset/qved_train.json"
 VAL_JSON="dataset/qved_val.json"
+VIDEO_DIR="test_videos"  # Directory where videos are located (test_videos or videos)
 
 # HuggingFace dataset configuration
 HF_DATASET="EdgeVLM-Labs/QVED-Test-Dataset"
@@ -123,6 +124,7 @@ CMD="python gemma3_finetune_unsloth.py \
     --num_frames $NUM_FRAMES \
     --dataloader_num_workers $DATALOADER_NUM_WORKERS \
     --per_device_eval_batch_size $PER_DEVICE_EVAL_BATCH_SIZE \
+    --video_dir $VIDEO_DIR \
     --wandb_project $WANDB_PROJECT \
     --wandb_entity $WANDB_ENTITY \
     --wandb_run_name $WANDB_RUN_NAME \

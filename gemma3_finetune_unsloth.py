@@ -152,29 +152,63 @@ def load_hf_dataset_streaming(dataset_name: str, split: str, num_samples: int,
     return dataset
 
 
-def load_qved_dataset(json_path: str, num_frames: int = 8) -> Dataset:
+def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None) -> Dataset:
     """Load QVED dataset from JSON (prepared by dataset.py) and convert to conversation format."""
     with open(json_path, 'r') as f:
         data = json.load(f)
     
     dataset = []
     print(f"📥 Loading QVED dataset from {json_path}...")
+    if video_dir:
+        print(f"📁 Looking for videos in: {video_dir}")
     skipped = 0
+    path_not_found = []
     
     for idx, item in enumerate(data):
         if idx % 50 == 0:
             print(f"  Processed {idx}/{len(data)} samples...")
             
         video_path = item.get('video', '')
+        original_path = video_path
         
-        # Handle relative paths - use videos directory
-        if not os.path.isabs(video_path):
-            # Extract just the filename from the path
-            video_filename = os.path.basename(video_path)
-            video_path = os.path.join('videos', video_filename)
+        # Try multiple path variations to find the video
+        video_found = False
+        paths_to_try = []
         
-        if not os.path.exists(video_path):
-            print(f"⚠️ Skipping missing video: {video_path}")
+        # Extract filename
+        video_filename = os.path.basename(video_path)
+        
+        # Try different path combinations
+        paths_to_try = [video_path]  # Original path as-is
+        
+        # If user specified video_dir, prioritize it
+        if video_dir:
+            paths_to_try.extend([
+                os.path.join(video_dir, video_filename),
+                os.path.join(os.path.abspath(video_dir), video_filename),
+            ])
+        
+        # Add default fallback paths
+        paths_to_try.extend([
+            os.path.join('test_videos', video_filename),  # test_videos/filename.mp4
+            os.path.join('/workspace/gemma3-testing/test_videos', video_filename),  # Absolute test_videos path
+            os.path.join('videos', video_filename),  # videos/filename.mp4
+            os.path.join('/workspace/gemma3-testing/videos', video_filename),  # Absolute workspace path
+            os.path.join(os.getcwd(), 'test_videos', video_filename),  # Current dir + test_videos
+            os.path.join(os.getcwd(), 'videos', video_filename),  # Current dir + videos
+            video_filename,  # Just filename in current dir
+        ])
+        
+        # Try each path
+        for path in paths_to_try:
+            if os.path.exists(path):
+                video_path = path
+                video_found = True
+                break
+        
+        if not video_found:
+            if len(path_not_found) < 3:  # Only show first 3 missing paths
+                path_not_found.append(original_path)
             skipped += 1
             continue
         
@@ -207,6 +241,28 @@ def load_qved_dataset(json_path: str, num_frames: int = 8) -> Dataset:
         })
     
     print(f"✅ Loaded {len(dataset)} samples ({skipped} skipped)")
+    
+    # Show example paths that were not found
+    if path_not_found:
+        print(f"\n⚠️  Example missing video paths (showing first 3):")
+        for path in path_not_found:
+            print(f"   - {path}")
+        print(f"\n💡 Tried searching in:")
+        print(f"   - videos/")
+        print(f"   - /workspace/gemma3-testing/videos/")
+        print(f"   - {os.getcwd()}/videos/")
+        print(f"\n❌ ERROR: All videos were skipped! Please check:")
+        print(f"   1. Run: python dataset.py download --max-per-class 5")
+        print(f"   2. Verify videos exist: ls -la videos/")
+        print(f"   3. Check JSON paths: head dataset/qved_train.json")
+    
+    if len(dataset) == 0:
+        raise ValueError(
+            f"No valid samples found in {json_path}. "
+            f"Skipped {skipped} samples. "
+            f"Please ensure videos are downloaded to the 'videos/' directory."
+        )
+    
     return Dataset.from_list(dataset)
 
 
@@ -258,6 +314,8 @@ def main():
                        help="Number of samples to load from streaming dataset")
     parser.add_argument("--video_save_dir", type=str, default="videos",
                        help="Directory to save downloaded videos")
+    parser.add_argument("--video_dir", type=str, default=None,
+                       help="Directory where training videos are located (e.g., test_videos, videos)")
     parser.add_argument("--num_frames", type=int, default=16,
                        help="Number of frames to extract from each video")
     
@@ -420,13 +478,13 @@ def main():
     if args.train_json and os.path.exists(args.train_json):
         # Load from local QVED JSON (prepared by dataset.py)
         print(f"📥 Loading dataset from local JSON: {args.train_json}")
-        train_dataset = load_qved_dataset(args.train_json, args.num_frames)
+        train_dataset = load_qved_dataset(args.train_json, args.num_frames, args.video_dir)
         
         # Load validation dataset if evaluation is enabled
         eval_dataset = None
         if args.run_eval and args.val_json and os.path.exists(args.val_json):
             print(f"📥 Loading validation dataset from: {args.val_json}")
-            eval_dataset = load_qved_dataset(args.val_json, args.num_frames)
+            eval_dataset = load_qved_dataset(args.val_json, args.num_frames, args.video_dir)
             print(f"✅ Validation dataset ready: {len(eval_dataset)} samples\n")
         
     elif args.hf_dataset:
