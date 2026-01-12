@@ -474,7 +474,8 @@ def create_trainer(
         data_collator=UnslothVisionDataCollator(
             model, 
             processor, 
-            max_seq_length=args.max_seq_length
+            max_seq_length=args.max_seq_length,
+            truncation=False  # Disable truncation to preserve image tokens
         ),
         args=training_args,
     )
@@ -515,7 +516,7 @@ def main():
     parser.add_argument("--learning_rate", type=float, default=2e-4)
     parser.add_argument("--projector_lr", type=float, default=1e-4)
     parser.add_argument("--num_epochs", type=int, default=3)
-    parser.add_argument("--max_seq_length", type=int, default=2048)
+    parser.add_argument("--max_seq_length", type=int, default=4096)  # Increased for video frames
     parser.add_argument("--warmup_ratio", type=float, default=0.05)
     parser.add_argument("--max_grad_norm", type=float, default=0.3)
     parser.add_argument("--weight_decay", type=float, default=0.001)
