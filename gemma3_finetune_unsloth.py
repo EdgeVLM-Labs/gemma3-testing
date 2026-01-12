@@ -305,18 +305,23 @@ def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None
                   for idx, item in enumerate(data)}
         
         # Process completed tasks
+        completed = 0
         for future in as_completed(futures):
             idx = futures[future]
+            completed += 1
             
-            # Show progress
-            if (idx + 1) % 10 == 0 or idx == 0:
-                print(f"  📹 Processed {idx + 1}/{total} (loaded {len(dataset)}, skipped {skipped})")
+            # Show progress every 50 videos or at milestones
+            if completed % 50 == 0 or completed in [1, 10, 100, 500, 1000]:
+                print(f"  📹 Processed {completed}/{total} videos (✅ loaded: {len(dataset)}, ⏭️  skipped: {skipped})")
             
             try:
                 success, entry, error_msg = future.result()
                 
                 if success:
                     dataset.append(entry)
+                    # Show first successful load
+                    if len(dataset) == 1:
+                        print(f"  ✅ First video loaded successfully!")
                 else:
                     skipped += 1
                     if error_msg:
@@ -345,21 +350,34 @@ def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None
         print(f"\n⚠️  Example missing video paths (showing first 3):")
         for path in path_not_found:
             print(f"   - {path}")
-        print(f"\n💡 Tried searching in:")
+        print(f"\n💡 Searched in:")
+        if video_dir:
+            print(f"   - {video_dir}/ (user specified)")
+            print(f"   - {os.path.abspath(video_dir)}/ (absolute)")
+        print(f"   - test_videos/")
+        print(f"   - /workspace/gemma3-testing/test_videos/")
         print(f"   - videos/")
         print(f"   - /workspace/gemma3-testing/videos/")
-        print(f"   - {os.getcwd()}/videos/")
-        print(f"\n❌ ERROR: All videos were skipped! Please check:")
-        print(f"   1. Run: python dataset.py download --max-per-class 5")
-        print(f"   2. Verify videos exist: ls -la videos/")
-        print(f"   3. Check JSON paths: head dataset/qved_train.json")
     
     if len(dataset) == 0:
+        print(f"\n❌ ERROR: No valid videos found!")
+        print(f"\n💡 Solutions:")
+        print(f"   1. Check if videos exist:")
+        print(f"      ls -la test_videos/ | head -20")
+        print(f"      ls -la videos/ | head -20")
+        print(f"   2. Verify video_dir parameter: --video_dir {video_dir or 'test_videos'}")
+        print(f"   3. If you cleaned videos, create filtered JSON:")
+        print(f"      python dataset.py prepare --video-dir test_videos")
         raise ValueError(
             f"No valid samples found in {json_path}. "
             f"Skipped {skipped} samples. "
-            f"Please ensure videos are downloaded to the 'videos/' directory."
+            f"Videos may not exist in specified directory."
         )
+    
+    # Warn if too many skipped but some found
+    if len(dataset) < len(data) * 0.1:  # Less than 10% loaded
+        print(f"\n⚠️  WARNING: Only {len(dataset)}/{len(data)} samples loaded ({(len(dataset)/len(data)*100):.1f}%)")
+        print(f"   This is OK if you cleaned the dataset, but verify videos exist in: {video_dir or 'test_videos'}")
     
     return Dataset.from_list(dataset)
 
