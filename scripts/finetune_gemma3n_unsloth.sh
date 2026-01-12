@@ -129,7 +129,7 @@ CMD="python gemma3_finetune_unsloth.py \
     --wandb_project $WANDB_PROJECT \
     --wandb_entity $WANDB_ENTITY \
     --wandb_run_name $WANDB_RUN_NAME \
-    --output_dir $OUTPUT_DIR \"
+    --output_dir $OUTPUT_DIR"
 
 # Add max_train_samples if specified
 if [ -n "$MAX_TRAIN_SAMPLES" ]; then
