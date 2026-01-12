@@ -152,21 +152,26 @@ def load_hf_dataset_streaming(dataset_name: str, split: str, num_samples: int,
     return dataset
 
 
-def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None) -> Dataset:
+def load_qved_dataset(json_path: str, num_frames: int = 8, video_dir: str = None, max_samples: int = None) -> Dataset:
     """Load QVED dataset from JSON (prepared by dataset.py) and convert to conversation format."""
     with open(json_path, 'r') as f:
         data = json.load(f)
     
     dataset = []
     print(f"📥 Loading QVED dataset from {json_path}...")
+    print(f"📊 Total samples in JSON: {len(data)}")
+    if max_samples:
+        print(f"⚠️  Limiting to first {max_samples} samples for faster training")
+        data = data[:max_samples]
     if video_dir:
         print(f"📁 Looking for videos in: {video_dir}")
     skipped = 0
     path_not_found = []
     
     for idx, item in enumerate(data):
-        if idx % 50 == 0:
-            print(f"  Processed {idx}/{len(data)} samples...")
+        # Show progress every 10 samples (more frequent than before)
+        if idx % 10 == 0:
+            print(f"  📹 Processing video {idx + 1}/{len(data)} (loaded {len(dataset)}, skipped {skipped})...")
             
         video_path = item.get('video', '')
         original_path = video_path
@@ -316,6 +321,8 @@ def main():
                        help="Directory to save downloaded videos")
     parser.add_argument("--video_dir", type=str, default=None,
                        help="Directory where training videos are located (e.g., test_videos, videos)")
+    parser.add_argument("--max_train_samples", type=int, default=None,
+                       help="Maximum number of training samples to load (for faster testing, e.g., 100)")
     parser.add_argument("--num_frames", type=int, default=16,
                        help="Number of frames to extract from each video")
     
@@ -478,13 +485,14 @@ def main():
     if args.train_json and os.path.exists(args.train_json):
         # Load from local QVED JSON (prepared by dataset.py)
         print(f"📥 Loading dataset from local JSON: {args.train_json}")
-        train_dataset = load_qved_dataset(args.train_json, args.num_frames, args.video_dir)
+        train_dataset = load_qved_dataset(args.train_json, args.num_frames, args.video_dir, args.max_train_samples)
         
         # Load validation dataset if evaluation is enabled
         eval_dataset = None
         if args.run_eval and args.val_json and os.path.exists(args.val_json):
             print(f"📥 Loading validation dataset from: {args.val_json}")
-            eval_dataset = load_qved_dataset(args.val_json, args.num_frames, args.video_dir)
+            # Limit validation to 50 samples for faster eval
+            eval_dataset = load_qved_dataset(args.val_json, args.num_frames, args.video_dir, max_samples=50)
             print(f"✅ Validation dataset ready: {len(eval_dataset)} samples\n")
         
     elif args.hf_dataset:

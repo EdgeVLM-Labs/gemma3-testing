@@ -33,6 +33,7 @@ DATASET_MODE="${1:---local}"  # Default to local mode (prepared by dataset.py)
 TRAIN_JSON="dataset/qved_train.json"
 VAL_JSON="dataset/qved_val.json"
 VIDEO_DIR="test_videos"  # Directory where videos are located (test_videos or videos)
+MAX_TRAIN_SAMPLES=""     # Set to a number (e.g., 100) to limit training samples for quick testing
 
 # HuggingFace dataset configuration
 HF_DATASET="EdgeVLM-Labs/QVED-Test-Dataset"
@@ -128,7 +129,15 @@ CMD="python gemma3_finetune_unsloth.py \
     --wandb_project $WANDB_PROJECT \
     --wandb_entity $WANDB_ENTITY \
     --wandb_run_name $WANDB_RUN_NAME \
-    --output_dir $OUTPUT_DIR \
+    --output_dir $OUTPUT_DIR \"
+
+# Add max_train_samples if specified
+if [ -n "$MAX_TRAIN_SAMPLES" ]; then
+    CMD="$CMD --max_train_samples $MAX_TRAIN_SAMPLES"
+    echo "⚡ Training on limited samples: $MAX_TRAIN_SAMPLES"
+fi
+
+CMD="$CMD \
     $RUN_EVAL \
     --eval_steps $EVAL_STEPS \
     --save_steps $SAVE_STEPS \
