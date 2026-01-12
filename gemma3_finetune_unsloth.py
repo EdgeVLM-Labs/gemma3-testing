@@ -48,78 +48,60 @@ from PIL import Image
 
 
 def downsample_video(video_path: str, num_frames: int = 8, timeout: int = 10) -> List[Image.Image]:
-    """Extract evenly spaced frames for VLM context with timeout protection.
+    """Extract evenly spaced frames for VLM context with basic error handling.
     
     Args:
         video_path: Path to video file
         num_frames: Number of frames to extract
-        timeout: Maximum seconds to spend on this video
+        timeout: Not used in thread context (kept for API compatibility)
     """
-    import signal
-    from contextlib import contextmanager
-    
-    @contextmanager
-    def time_limit(seconds):
-        def signal_handler(signum, frame):
-            raise TimeoutError(f"Video processing timed out after {seconds}s")
-        signal.signal(signal.SIGALRM, signal_handler)
-        signal.alarm(seconds)
-        try:
-            yield
-        finally:
-            signal.alarm(0)
-    
     try:
-        with time_limit(timeout):
-            vidcap = cv2.VideoCapture(video_path)
-            if not vidcap.isOpened():
+        vidcap = cv2.VideoCapture(video_path)
+        if not vidcap.isOpened():
+            return []
+        
+        total_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = vidcap.get(cv2.CAP_PROP_FPS)
+        
+        # If total_frames is unreliable, estimate from duration
+        if total_frames <= 0 or total_frames > 100000:
+            duration = vidcap.get(cv2.CAP_PROP_FRAME_COUNT) / fps if fps > 0 else 0
+            if duration > 0:
+                total_frames = int(duration * fps)
+            else:
+                vidcap.release()
                 return []
-            
-            total_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-            fps = vidcap.get(cv2.CAP_PROP_FPS)
-            
-            # If total_frames is unreliable, estimate from duration
-            if total_frames <= 0 or total_frames > 100000:
-                duration = vidcap.get(cv2.CAP_PROP_FRAME_COUNT) / fps if fps > 0 else 0
-                if duration > 0:
-                    total_frames = int(duration * fps)
-                else:
-                    return []
-            
-            # Calculate frame indices
-            indices = np.linspace(0, total_frames - 1, min(num_frames, total_frames), dtype=int)
-            frames = []
-            
-            # Use faster sequential reading instead of seeking
-            current_frame = 0
-            for target_idx in sorted(indices):
-                # Skip frames until we reach target
-                while current_frame < target_idx:
-                    ret = vidcap.grab()
-                    if not ret:
-                        break
-                    current_frame += 1
-                
-                # Read the target frame
-                success, image = vidcap.retrieve()
-                if success:
-                    # Resize to reduce memory (224x224 is typical for vision models)
-                    image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_AREA)
-                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    frames.append(Image.fromarray(image))
-                current_frame += 1
-                
-                if len(frames) >= num_frames:
+        
+        # Calculate frame indices
+        indices = np.linspace(0, total_frames - 1, min(num_frames, total_frames), dtype=int)
+        frames = []
+        
+        # Use faster sequential reading instead of seeking
+        current_frame = 0
+        for target_idx in sorted(indices):
+            # Skip frames until we reach target
+            while current_frame < target_idx:
+                ret = vidcap.grab()
+                if not ret:
                     break
+                current_frame += 1
             
-            vidcap.release()
-            return frames
+            # Read the target frame
+            success, image = vidcap.retrieve()
+            if success:
+                # Resize to reduce memory (224x224 is typical for vision models)
+                image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_AREA)
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                frames.append(Image.fromarray(image))
+            current_frame += 1
             
-    except TimeoutError as e:
-        print(f"⏱️ Timeout: {os.path.basename(video_path)} - {str(e)}")
-        return []
+            if len(frames) >= num_frames:
+                break
+        
+        vidcap.release()
+        return frames
+        
     except Exception as e:
-        print(f"⚠️ Error processing {os.path.basename(video_path)}: {str(e)}")
         return []
 
 
@@ -218,7 +200,10 @@ def process_single_video(item, num_frames, video_dir, idx, total):
         
         # Try multiple path variations to find the video
         video_found = False
+        
+        # Extract both full relative path and just filename
         video_filename = os.path.basename(video_path)
+        video_relpath = video_path  # Keep the relative path with subdirs
         
         # Try different path combinations
         paths_to_try = [video_path]  # Original path as-is
@@ -226,19 +211,27 @@ def process_single_video(item, num_frames, video_dir, idx, total):
         # If user specified video_dir, prioritize it
         if video_dir:
             paths_to_try.extend([
-                os.path.join(video_dir, video_filename),
+                os.path.join(video_dir, video_relpath),  # video_dir + full relative path
+                os.path.join(video_dir, video_filename),  # video_dir + just filename
+                os.path.join(os.path.abspath(video_dir), video_relpath),
                 os.path.join(os.path.abspath(video_dir), video_filename),
             ])
         
         # Add default fallback paths
         paths_to_try.extend([
-            os.path.join('test_videos', video_filename),
+            os.path.join('test_videos', video_relpath),  # test_videos + full path
+            os.path.join('test_videos', video_filename),  # test_videos + filename
+            os.path.join('/workspace/gemma3-testing/test_videos', video_relpath),
             os.path.join('/workspace/gemma3-testing/test_videos', video_filename),
+            os.path.join('videos', video_relpath),
             os.path.join('videos', video_filename),
+            os.path.join('/workspace/gemma3-testing/videos', video_relpath),
             os.path.join('/workspace/gemma3-testing/videos', video_filename),
+            os.path.join(os.getcwd(), 'test_videos', video_relpath),
             os.path.join(os.getcwd(), 'test_videos', video_filename),
+            os.path.join(os.getcwd(), 'videos', video_relpath),
             os.path.join(os.getcwd(), 'videos', video_filename),
-            video_filename,
+            video_filename,  # Just filename in current dir
         ])
         
         # Try each path
