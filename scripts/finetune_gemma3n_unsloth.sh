@@ -120,7 +120,7 @@ mkdir -p "$OUTPUT_DIR"
 
 # ==================== Build Command ====================
 
-CMD="python gemma3n_finetune_unsloth.py \
+CMD="python gemma3_finetune_unsloth.py \
     --model_name $MODEL_NAME \
     $LOAD_IN_4BIT \
     --train_json $TRAIN_JSON \
