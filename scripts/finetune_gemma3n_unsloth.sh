@@ -41,14 +41,17 @@ VIDEO_SAVE_DIR="videos"
 
 # Training hyperparameters
 OUTPUT_DIR="outputs/gemma3n_finetune_$(date +%Y%m%d_%H%M%S)"
-BATCH_SIZE=1
+BATCH_SIZE=8
 GRAD_ACCUM=4
 LEARNING_RATE=2e-4
-NUM_EPOCHS=1
-MAX_SEQ_LENGTH=50000
-WARMUP_RATIO=0.03
+PROJECTOR_LR=1e-4  # Projector learning rate
+NUM_EPOCHS=3
+MAX_SEQ_LENGTH=2048
+WARMUP_RATIO=0.05
 MAX_GRAD_NORM=0.3
 WEIGHT_DECAY=0.001
+DATALOADER_NUM_WORKERS=2
+PER_DEVICE_EVAL_BATCH_SIZE=8
 
 # DeepSpeed configuration (optional)
 DEEPSPEED_CONFIG=""  # Set to "scripts/zero.json" to enable DeepSpeed (requires: pip install deepspeed)
@@ -59,7 +62,7 @@ LORA_ALPHA=128
 LORA_DROPOUT=0.0
 
 # Video processing
-NUM_FRAMES=8
+NUM_FRAMES=16
 
 # Wandb configuration
 WANDB_PROJECT="Finetune-gemma3n"
@@ -73,7 +76,9 @@ HF_PRIVATE=""    # Set to "--hf_private" to make repository private
 
 # Evaluation configuration
 RUN_EVAL="--run_eval"           # Enable evaluation during training (recommended)
-EVAL_STEPS=25                    # Run eval every N steps (more frequent = better tracking)
+EVAL_STEPS=0                     # Auto-calculate based on dataset size (set to 0 for auto)
+SAVE_STEPS=30                    # Save checkpoint every 30 steps
+LOGGING_STEPS=0                  # Auto-calculate logging steps (set to 0 for auto)
 SAVE_EVAL_CSV="--save_eval_csv" # Save eval results as CSV after training
 GENERATE_REPORT=""               # Set to "--generate_report" to generate Excel report
 
@@ -106,6 +111,7 @@ CMD="python gemma3_finetune_unsloth.py \
     --batch_size $BATCH_SIZE \
     --gradient_accumulation $GRAD_ACCUM \
     --learning_rate $LEARNING_RATE \
+    --projector_lr $PROJECTOR_LR \
     --num_epochs $NUM_EPOCHS \
     --max_seq_length $MAX_SEQ_LENGTH \
     --warmup_ratio $WARMUP_RATIO \
@@ -115,12 +121,16 @@ CMD="python gemma3_finetune_unsloth.py \
     --lora_alpha $LORA_ALPHA \
     --lora_dropout $LORA_DROPOUT \
     --num_frames $NUM_FRAMES \
+    --dataloader_num_workers $DATALOADER_NUM_WORKERS \
+    --per_device_eval_batch_size $PER_DEVICE_EVAL_BATCH_SIZE \
     --wandb_project $WANDB_PROJECT \
     --wandb_entity $WANDB_ENTITY \
     --wandb_run_name $WANDB_RUN_NAME \
     --output_dir $OUTPUT_DIR \
     $RUN_EVAL \
     --eval_steps $EVAL_STEPS \
+    --save_steps $SAVE_STEPS \
+    --logging_steps $LOGGING_STEPS \
     $SAVE_EVAL_CSV \
     $GENERATE_REPORT \
     $UPLOAD_TO_HF \

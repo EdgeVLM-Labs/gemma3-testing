@@ -304,18 +304,25 @@ bash scripts/finetune_gemma3n_unsloth.sh
 - **Dataset:** Local QVED (`dataset/qved_train.json` + videos in `videos/`)
 - **LoRA:** r=64, alpha=128, dropout=0.0, target_modules=all-linear
 - **Training:** 
-  - Batch size: 1 per device
+  - Batch size: 8 per device
   - Gradient accumulation: 4 steps
-  - Effective batch size: 4
+  - Effective batch size: 32
   - Learning rate: 2e-4 with cosine schedule
-  - Warmup ratio: 3%
+  - Projector LR: 1e-4
+  - Warmup ratio: 5%
   - Max gradient norm: 0.3
   - Weight decay: 0.001
-  - Epochs: 1 (adjust in script)
-- **Video:** 8 frames per video
-- **Max sequence length:** 50000 tokens (required for vision)
+  - Epochs: 3
+  - Dataloader workers: 2
+- **Video:** 16 frames per video
+- **Max sequence length:** 2048 tokens
+- **Evaluation:**
+  - Per device eval batch size: 8
+  - Eval strategy: "steps"
+  - Eval steps: Auto-calculated (~10 times per epoch)
+  - Save steps: 30
 - **Optimizer:** AdamW fused
-- **Tracking:** WandB (real-time metrics)
+- **Tracking:** WandB (real-time metrics every step)
 
 ### Method 2: Custom Configuration
 
@@ -328,13 +335,19 @@ python gemma3_finetune_unsloth.py \
     --val_json dataset/qved_val.json \
     --output_dir outputs/custom_finetune \
     --num_epochs 3 \
-    --batch_size 1 \
-    --gradient_accumulation 8 \
+    --batch_size 8 \
+    --gradient_accumulation 4 \
     --learning_rate 2e-4 \
-    --max_seq_length 50000 \
-    --lora_r 128 \
-    --lora_alpha 256 \
-    --num_frames 8 \
+    --projector_lr 1e-4 \
+    --max_seq_length 2048 \
+    --lora_r 64 \
+    --lora_alpha 128 \
+    --num_frames 16 \
+    --dataloader_num_workers 2 \
+    --per_device_eval_batch_size 8 \
+    --save_steps 30 \
+    --eval_steps 0 \
+    --run_eval \
     --wandb_project "My-Gemma3N-Project" \
     --wandb_run_name "custom-run-001"
 ```
@@ -373,15 +386,19 @@ Validation tracking is **enabled by default** in [finetune_gemma3n_unsloth.sh](s
 ```bash
 # Evaluation configuration (already enabled)
 RUN_EVAL="--run_eval"              # Evaluation enabled
-EVAL_STEPS=25                       # Eval every 25 steps (more frequent tracking)
+EVAL_STEPS=0                        # Auto-calculate (evaluates ~10 times per epoch)
+SAVE_STEPS=30                       # Save checkpoint every 30 steps
+LOGGING_STEPS=0                     # Auto-calculate (logs every step for real-time)
 SAVE_EVAL_CSV="--save_eval_csv"    # Save results as CSV after training
 GENERATE_REPORT=""                  # Set to "--generate_report" for Excel report
+PER_DEVICE_EVAL_BATCH_SIZE=8        # Eval batch size
 ```
 
 **What happens during evaluation:**
-- ✅ Runs automatically every 25 steps (configurable)
+- ✅ Runs automatically ~10 times per epoch (auto-calculated based on dataset size)
 - ✅ Evaluates on full validation set
-- ✅ Logs `eval/loss`, `eval/runtime`, `eval/samples_per_second` to WandB
+- ✅ Logs `eval/loss`, `eval/runtime`, `eval/samples_per_second` to WandB in real-time
+- ✅ Logs training metrics every step for continuous monitoring
 - ✅ Saves best model checkpoint based on eval loss
 - ✅ Shows evaluation progress in console
 - ✅ Exports results to CSV after training completes
@@ -391,9 +408,9 @@ GENERATE_REPORT=""                  # Set to "--generate_report" for Excel repor
 RUN_EVAL=""  # Remove --run_eval flag
 ```
 
-**To increase evaluation frequency** (more data points in WandB):
+**To manually set evaluation frequency**:
 ```bash
-EVAL_STEPS=10  # Eval every 10 steps (slower but more tracking)
+EVAL_STEPS=10  # Eval every 10 steps instead of auto-calculate
 ```
 
 Output files after training with eval:
@@ -717,29 +734,37 @@ python utils/generate_test_report.py \
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `batch_size` | 1 | Per-device batch size |
-| `gradient_accumulation` | 4 | Effective batch = batch_size × this |
+| `batch_size` | 8 | Per-device batch size |
+| `gradient_accumulation` | 4 | Effective batch = batch_size × this (32 total) |
 | `learning_rate` | 2e-4 | Initial learning rate |
-| `num_epochs` | 1 | Training epochs (adjust based on dataset size) |
-| `max_seq_length` | 50000 | Max tokens (required for 8 frames) |
-| `warmup_ratio` | 0.03 | 3% of steps for warmup |
+| `projector_lr` | 1e-4 | Projector learning rate |
+| `num_epochs` | 3 | Training epochs |
+| `max_seq_length` | 2048 | Max tokens per sequence |
+| `warmup_ratio` | 0.05 | 5% of steps for warmup |
 | `max_grad_norm` | 0.3 | Gradient clipping |
 | `weight_decay` | 0.001 | L2 regularization |
+| `dataloader_num_workers` | 2 | Parallel data loading |
+| `per_device_eval_batch_size` | 8 | Eval batch size |
+| `eval_steps` | Auto | Evaluate ~10 times per epoch |
+| `save_steps` | 30 | Save checkpoint every 30 steps |
+| `logging_steps` | 1 | Log every step for real-time tracking |
 
 ### Video Processing
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `num_frames` | 8 | Frames extracted per video |
+| `num_frames` | 16 | Frames extracted per video |
 | Frame extraction | `numpy.linspace` | Even spacing across video |
+| Input resolution | 224x224 | Resolution to encoder |
 
 ### Memory Requirements
 
 | Configuration | VRAM | Training Speed |
 |--------------|------|----------------|
-| Batch=1, Grad=4, R=64 | ~24GB | Baseline |
-| Batch=1, Grad=8, R=64 | ~24GB | 2× slower |
-| Batch=1, Grad=4, R=128 | ~28GB | 1.5× slower |
+| Batch=8, Grad=4, R=64, 16 frames | ~40GB | Baseline |
+| Batch=4, Grad=4, R=64, 16 frames | ~30GB | Slightly slower |
+| Batch=2, Grad=4, R=64, 16 frames | ~24GB | 2× slower |
+| Batch=1, Grad=4, R=64, 8 frames | ~20GB | 4× slower |
 | 4-bit quantization | ~16GB | Slower inference |
 
 ---

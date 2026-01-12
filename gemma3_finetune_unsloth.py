@@ -244,8 +244,8 @@ def main():
                        help="Path to local QVED validation JSON (prepared by dataset.py)")
     parser.add_argument("--run_eval", action="store_true",
                        help="Run evaluation on validation set during training")
-    parser.add_argument("--eval_steps", type=int, default=50,
-                       help="Run evaluation every N steps")
+    parser.add_argument("--eval_steps", type=int, default=0,
+                       help="Run evaluation every N steps (0 for auto-calculate)")
     parser.add_argument("--save_eval_csv", action="store_true",
                        help="Save evaluation results as CSV after training")
     parser.add_argument("--generate_report", action="store_true",
@@ -258,28 +258,38 @@ def main():
                        help="Number of samples to load from streaming dataset")
     parser.add_argument("--video_save_dir", type=str, default="videos",
                        help="Directory to save downloaded videos")
-    parser.add_argument("--num_frames", type=int, default=8,
+    parser.add_argument("--num_frames", type=int, default=16,
                        help="Number of frames to extract from each video")
     
     # Training configuration
     parser.add_argument("--output_dir", type=str, default="outputs",
                        help="Output directory for checkpoints")
-    parser.add_argument("--batch_size", type=int, default=1,
+    parser.add_argument("--batch_size", type=int, default=8,
                        help="Per device batch size")
     parser.add_argument("--gradient_accumulation", type=int, default=4,
                        help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=2e-4,
                        help="Learning rate")
+    parser.add_argument("--projector_lr", type=float, default=1e-4,
+                       help="Projector learning rate")
     parser.add_argument("--num_epochs", type=int, default=3,
                        help="Number of training epochs")
-    parser.add_argument("--max_seq_length", type=int, default=50000,
+    parser.add_argument("--max_seq_length", type=int, default=2048,
                        help="Maximum sequence length")
-    parser.add_argument("--warmup_ratio", type=float, default=0.03,
+    parser.add_argument("--warmup_ratio", type=float, default=0.05,
                        help="Warmup ratio")
     parser.add_argument("--max_grad_norm", type=float, default=0.3,
                        help="Max gradient norm")
     parser.add_argument("--weight_decay", type=float, default=0.001,
                        help="Weight decay")
+    parser.add_argument("--dataloader_num_workers", type=int, default=2,
+                       help="Number of dataloader workers")
+    parser.add_argument("--per_device_eval_batch_size", type=int, default=8,
+                       help="Per device eval batch size")
+    parser.add_argument("--save_steps", type=int, default=30,
+                       help="Save checkpoint every N steps")
+    parser.add_argument("--logging_steps", type=int, default=0,
+                       help="Log every N steps (0 for auto-calculate)")
     
     # LoRA configuration
     parser.add_argument("--lora_r", type=int, default=64,
@@ -449,6 +459,19 @@ def main():
     # Enable training mode
     FastVisionModel.for_training(model)
     
+    # Auto-calculate eval_steps and logging_steps if set to 0
+    total_train_steps = (len(train_dataset) * args.num_epochs) // (args.batch_size * args.gradient_accumulation)
+    
+    if args.eval_steps == 0:
+        # Evaluate 10 times per epoch
+        args.eval_steps = max(1, total_train_steps // (args.num_epochs * 10))
+        print(f"📊 Auto-calculated eval_steps: {args.eval_steps} (evaluating ~10 times per epoch)")
+    
+    if args.logging_steps == 0:
+        # Log every step for real-time tracking
+        args.logging_steps = 1
+        print(f"📊 Auto-calculated logging_steps: {args.logging_steps} (logging every step)")
+    
     # Create trainer
     print("🏋️ Setting up trainer...")
     print("ℹ️  Note: Gradient accumulation with Gemma-3N may show a warning about num_items_in_batch.")
@@ -457,7 +480,7 @@ def main():
     # Set up training arguments
     training_args = SFTConfig(
         per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.batch_size,  # Same batch size for eval
+        per_device_eval_batch_size=args.per_device_eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
@@ -466,17 +489,17 @@ def main():
         num_train_epochs=args.num_epochs,
         learning_rate=args.learning_rate,
         
-        # Logging configuration
-        logging_steps=1,
+        # Logging configuration - Log every step for real-time WandB tracking
+        logging_steps=args.logging_steps,
         logging_first_step=True,
         logging_strategy="steps",
         
         # Save configuration
         save_strategy="steps",
-        save_steps=50,
+        save_steps=args.save_steps,
         save_total_limit=3,  # Keep only last 3 checkpoints
         
-        # Evaluation configuration
+        # Evaluation configuration - Evaluate at steps for real-time tracking
         eval_strategy="steps" if args.run_eval else "no",
         eval_steps=args.eval_steps if args.run_eval else None,
         eval_on_start=True if args.run_eval else False,  # Eval before training starts
@@ -499,10 +522,14 @@ def main():
         dataset_kwargs={"skip_prepare_dataset": True},
         max_length=args.max_seq_length,
         deepspeed=deepspeed_config,
+        dataloader_num_workers=args.dataloader_num_workers,
         
-        # Additional tracking
+        # Additional tracking for real-time WandB monitoring
         include_tokens_per_second=True,
         include_num_input_tokens_seen=True,
+        log_level="info",
+        log_level_replica="warning",
+        log_on_each_node=False,
     )
     
     trainer = SFTTrainer(
