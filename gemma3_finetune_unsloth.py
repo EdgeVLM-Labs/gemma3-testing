@@ -373,7 +373,21 @@ def load_dataset_parallel(
         print(f"⚠️  WARNING: Only {len(dataset)/len(data)*100:.1f}% of samples loaded!")
         print(f"   Consider checking video paths or filtering the JSON file.\n")
     
-    return Dataset.from_list(dataset)
+    print(f"⏳ Converting to HuggingFace Dataset (this may take a moment)...", flush=True)
+    
+    # Create dataset without deep copying images to avoid memory issues
+    # Disable pyarrow to prevent serialization issues with PIL images
+    import datasets
+    datasets.disable_caching()
+    
+    hf_dataset = Dataset.from_list(dataset)
+    
+    # Disable format transforms to keep PIL images as-is
+    hf_dataset.set_format(type=None)
+    
+    print(f"✅ HuggingFace Dataset created\n", flush=True)
+    
+    return hf_dataset
 
 
 # ============================================================================
@@ -447,7 +461,7 @@ def create_trainer(
         # Evaluation
         eval_strategy="steps" if args.run_eval and eval_dataset else "no",
         eval_steps=eval_steps if args.run_eval and eval_dataset else None,
-        eval_on_start=True if args.run_eval and eval_dataset else False,
+        eval_on_start=False,  # Disabled to prevent hanging on large datasets
         load_best_model_at_end=True if args.run_eval and eval_dataset else False,
         metric_for_best_model="eval_loss" if args.run_eval and eval_dataset else None,
         greater_is_better=False,
@@ -462,11 +476,20 @@ def create_trainer(
         remove_unused_columns=False,
         dataset_text_field="",
         dataset_kwargs={"skip_prepare_dataset": True},
-        max_length=args.max_seq_length,
+        max_seq_length=args.max_seq_length,
+        packing=False,  # Disable packing for video datasets
     )
     
-    print("⏳ Creating SFTTrainer instance...")
-    print("   (This may take several minutes for large datasets)")
+    print("⏳ Step 1/3: Creating data collator...", flush=True)
+    data_collator = UnslothVisionDataCollator(
+        model, 
+        processor, 
+        max_seq_length=args.max_seq_length
+    )
+    print("✅ Data collator created", flush=True)
+    
+    print("⏳ Step 2/3: Creating SFTTrainer instance...", flush=True)
+    print("   (This may take several minutes for large datasets)", flush=True)
     
     # Create trainer
     trainer = SFTTrainer(
@@ -474,15 +497,11 @@ def create_trainer(
         train_dataset=train_dataset,
         eval_dataset=eval_dataset if args.run_eval else None,
         processing_class=processor.tokenizer,
-        data_collator=UnslothVisionDataCollator(
-            model, 
-            processor, 
-            max_seq_length=args.max_seq_length
-        ),
+        data_collator=data_collator,
         args=training_args,
     )
     
-    print("✅ SFTTrainer instance created")
+    print("✅ Step 3/3: SFTTrainer instance created", flush=True)
     
     return trainer
 

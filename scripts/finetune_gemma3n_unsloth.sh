@@ -37,7 +37,7 @@ if [ "$TEST_MODE" = true ]; then
     echo "⚡ TEST MODE: Training on 100 samples only"
 else
     MAX_TRAIN_SAMPLES=""
-    MAX_VAL_SAMPLES=""
+    MAX_VAL_SAMPLES="--max_val_samples 20"  # Limit validation to 20 for faster eval
 fi
 
 # Output
