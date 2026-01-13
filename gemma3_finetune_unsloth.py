@@ -422,6 +422,18 @@ def create_trainer(
     eval_steps = args.eval_steps if args.eval_steps > 0 else max(1, steps_per_epoch // 10)
     logging_steps = args.logging_steps if args.logging_steps > 0 else 1
     
+    # Ensure save_steps is a multiple of eval_steps (required for load_best_model_at_end)
+    if args.run_eval and eval_dataset:
+        # Make save_steps a multiple of eval_steps
+        if args.save_steps % eval_steps != 0:
+            adjusted_save_steps = ((args.save_steps // eval_steps) + 1) * eval_steps
+            print(f"⚠️  Adjusting save_steps from {args.save_steps} to {adjusted_save_steps} (must be multiple of eval_steps={eval_steps})")
+            save_steps = adjusted_save_steps
+        else:
+            save_steps = args.save_steps
+    else:
+        save_steps = args.save_steps
+    
     print(f"\n{'='*80}")
     print(f"Training Configuration")
     print(f"{'='*80}")
@@ -432,7 +444,7 @@ def create_trainer(
     print(f"📈 Total steps: {total_steps}")
     print(f"📈 Eval every: {eval_steps} steps")
     print(f"📈 Log every: {logging_steps} steps")
-    print(f"💾 Save every: {args.save_steps} steps")
+    print(f"💾 Save every: {save_steps} steps")
     print(f"{'='*80}\n")
     
     # Training arguments
@@ -466,7 +478,7 @@ def create_trainer(
         
         # Saving
         save_strategy="steps",
-        save_steps=args.save_steps,
+        save_steps=save_steps,
         save_total_limit=3,
         
         # Evaluation

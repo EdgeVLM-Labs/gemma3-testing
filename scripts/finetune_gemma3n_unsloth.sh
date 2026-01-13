@@ -68,7 +68,7 @@ RESOLUTION=224
 NUM_WORKERS=8  # Parallel video processing
 
 # Checkpointing
-SAVE_STEPS=30
+SAVE_STEPS=42  # Must be multiple of eval_steps (42 = 2x eval_steps of 21)
 EVAL_STEPS=0   # Auto-calculate (0 = auto)
 LOGGING_STEPS=0  # Auto-calculate (0 = auto)
 
