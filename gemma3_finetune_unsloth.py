@@ -475,6 +475,7 @@ def create_trainer(
         logging_steps=logging_steps,
         logging_first_step=True,
         logging_strategy="steps",
+        log_level="info",
         
         # Saving
         save_strategy="steps",
@@ -494,6 +495,8 @@ def create_trainer(
         output_dir=args.output_dir,
         report_to="wandb" if args.use_wandb else "none",
         dataloader_num_workers=args.dataloader_num_workers,
+        dataloader_pin_memory=True,  # Speed up data transfer to GPU
+        dataloader_prefetch_factor=2 if args.dataloader_num_workers > 0 else None,  # Prefetch batches
         
         # Unsloth specific
         remove_unused_columns=False,
@@ -514,6 +517,20 @@ def create_trainer(
     print("⏳ Step 2/3: Creating SFTTrainer instance...", flush=True)
     print("   (This may take several minutes for large datasets)", flush=True)
     
+    # Create trainer with callbacks for better wandb logging
+    from transformers import TrainerCallback
+    
+    class WandbEvalCallback(TrainerCallback):
+        """Custom callback to ensure eval metrics are logged to wandb"""
+        def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+            if metrics and args.report_to and "wandb" in args.report_to:
+                import wandb
+                if wandb.run is not None:
+                    # Log all eval metrics with eval_ prefix
+                    eval_metrics = {k: v for k, v in metrics.items() if k.startswith('eval_')}
+                    if eval_metrics:
+                        wandb.log(eval_metrics, step=state.global_step)
+    
     # Create trainer
     trainer = SFTTrainer(
         model=model,
@@ -522,6 +539,7 @@ def create_trainer(
         processing_class=processor.tokenizer,
         data_collator=data_collator,
         args=training_args,
+        callbacks=[WandbEvalCallback()] if training_args.report_to and "wandb" in training_args.report_to else None,
     )
     
     print("✅ Step 3/3: SFTTrainer instance created", flush=True)

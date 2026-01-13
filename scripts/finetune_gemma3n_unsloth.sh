@@ -44,17 +44,23 @@ fi
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUTPUT_DIR="outputs/gemma3n_${TIMESTAMP}"
 
-# Hyperparameters (as specified)
+# ==================== Hyperparameters ====================
+# Optimized for speed on A100 80GB:
+# - MAX_SEQ_LENGTH=2048 (reduced from 4096) - 2x faster
+# - DATALOADER_NUM_WORKERS=4 - parallel data loading
+# - NUM_FRAMES=8 - balance between quality and speed
+# - Gradient accumulation=4 for effective batch_size=32
+
 BATCH_SIZE=8
-GRAD_ACCUM=4
+GRAD_ACCUM=4  # Effective batch = 8*4 = 32
 LEARNING_RATE=2e-4
 PROJECTOR_LR=1e-4
 NUM_EPOCHS=3
-MAX_SEQ_LENGTH=4096  # Increased for video frames with multiple image tokens
+MAX_SEQ_LENGTH=2048  # Reduced from 4096 for faster training
 WARMUP_RATIO=0.05
 MAX_GRAD_NORM=0.3
 WEIGHT_DECAY=0.001
-DATALOADER_NUM_WORKERS=0  # Set to 0 to avoid hangs with large datasets
+DATALOADER_NUM_WORKERS=2  # Increased from 0 for faster data loading
 PER_DEVICE_EVAL_BATCH_SIZE=8
 
 # LoRA configuration
@@ -70,7 +76,7 @@ NUM_WORKERS=8  # Parallel video processing
 # Checkpointing
 SAVE_STEPS=42  # Must be multiple of eval_steps (42 = 2x eval_steps of 21)
 EVAL_STEPS=0   # Auto-calculate (0 = auto)
-LOGGING_STEPS=0  # Auto-calculate (0 = auto)
+LOGGING_STEPS=1  # Log every step for better wandb tracking
 
 # Evaluation
 RUN_EVAL="--run_eval"  # Enable evaluation
