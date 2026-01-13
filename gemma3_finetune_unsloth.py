@@ -647,7 +647,27 @@ def main():
     print(f"🚀 Starting Training")
     print(f"{'='*80}\n")
     
-    trainer_stats = trainer.train()
+    try:
+        trainer_stats = trainer.train()
+    except RuntimeError as e:
+        if "out of memory" in str(e).lower():
+            print(f"\n❌ GPU OUT OF MEMORY ERROR!")
+            print(f"   Current memory: {torch.cuda.memory_allocated()/1024**3:.2f} GB")
+            print(f"   Max memory: {max_mem} GB")
+            print(f"\n💡 Suggestions:")
+            print(f"   - Reduce --batch_size (currently {args.batch_size})")
+            print(f"   - Reduce --num_frames (currently {args.num_frames})")
+            print(f"   - Reduce --max_seq_length (currently {args.max_seq_length})")
+            print(f"   - Add --load_in_4bit flag")
+            raise
+        else:
+            print(f"\n❌ Runtime Error: {e}")
+            raise
+    except Exception as e:
+        print(f"\n❌ Unexpected Error during training: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
     
     # Final stats
     used_mem = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
