@@ -22,7 +22,7 @@ if [[ "$1" == "--test" ]]; then
 fi
 
 # Model
-MODEL_NAME="unsloth/gemma-3n-E4B-it"
+MODEL_NAME="unsloth/gemma-3n-E2B-it"
 LOAD_IN_4BIT=""  # Add "--load_in_4bit" for 4-bit mode
 
 # Dataset paths

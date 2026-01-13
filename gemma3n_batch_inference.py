@@ -66,7 +66,7 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
     return frames
 
 
-def load_model(model_name: str = "unsloth/gemma-3n-E4B-it", device: str = "cuda"):
+def load_model(model_name: str = "unsloth/gemma-3n-E2B-it", device: str = "cuda"):
     """Load Gemma-3N model using Unsloth FastModel."""
     print(f"Loading model: {model_name}...")
     
@@ -242,8 +242,8 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default="unsloth/gemma-3n-E4B-it",
-        help="Model name or path (default: unsloth/gemma-3n-E4B-it)"
+        default="unsloth/gemma-3n-E2B-it",
+        help="Model name or path (default: unsloth/gemma-3n-E2B-it)"
     )
     parser.add_argument(
         "--video_folder",

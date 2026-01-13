@@ -68,7 +68,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: bash scripts/run_inference.sh [--model_path <path> | --hf_repo <repo>] [options]"
             echo ""
             echo "Model Source:"
-            echo "  --model_path      Path to local finetuned model checkpoint (default: unsloth/gemma-3n-E4B-it)"
+            echo "  --model_path      Path to local finetuned model checkpoint (default: unsloth/gemma-3n-E2B-it)"
             echo "  --hf_repo         HuggingFace repository ID (alternative to model_path)"
             echo ""
             echo "Optional:"
@@ -102,7 +102,7 @@ fi
 
 # Use default model if none specified
 if [ -z "$MODEL_PATH" ]; then
-    MODEL_PATH="unsloth/gemma-3n-E4B-it"
+    MODEL_PATH="unsloth/gemma-3n-E2B-it"
     echo "📦 Using default model: $MODEL_PATH"
 fi
 

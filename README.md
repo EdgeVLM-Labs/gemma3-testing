@@ -1,6 +1,6 @@
 # Gemma-3N Fine-tuning for Video Understanding
 
-Fine-tune Google's **Gemma-3N (unsloth/gemma-3n-E4B-it)** model on video datasets using **Unsloth FastVisionModel** for efficient LoRA training. Optimized for exercise form analysis and video understanding tasks.
+Fine-tune Google's **Gemma-3N (unsloth/gemma-3n-E2B-it)** model on video datasets using **Unsloth FastVisionModel** for efficient LoRA training. Optimized for exercise form analysis and video understanding tasks.
 
 **🎯 Model:** `unsloth/gemma-3n-E4B-it` | **📊 Dataset:** EdgeVLM-Labs/QVED-Test-Dataset | **⚡ Framework:** Unsloth
 
