@@ -474,8 +474,7 @@ def create_trainer(
         data_collator=UnslothVisionDataCollator(
             model, 
             processor, 
-            max_seq_length=args.max_seq_length,
-            truncation=False  # Disable truncation to preserve image tokens
+            max_seq_length=args.max_seq_length
         ),
         args=training_args,
     )
