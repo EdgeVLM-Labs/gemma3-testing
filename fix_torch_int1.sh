@@ -27,6 +27,8 @@ echo "🦥 Reinstalling Unsloth..."
 pip install --force-reinstall --no-cache-dir unsloth unsloth_zoo
 
 # Reinstall mamba-ssm (needs to be recompiled against new PyTorch)
+# IMPORTANT: mamba-ssm requires torch to be installed first
+# Using --no-build-isolation ensures torch is visible during build
 echo "🐍 Rebuilding Mamba-SSM for new PyTorch version..."
 pip uninstall -y mamba-ssm
 pip cache purge

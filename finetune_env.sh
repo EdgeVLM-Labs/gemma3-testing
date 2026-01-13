@@ -48,6 +48,8 @@ echo ""
 
 # ----------------------------
 # 5. Mamba-SSM (VideoMamba encoder)
+# IMPORTANT: Must be installed AFTER PyTorch (step 1)
+# --no-build-isolation ensures torch is visible during build
 # ----------------------------
 echo "🐍 [5/7] Installing Mamba-SSM..."
 pip uninstall -y mamba-ssm

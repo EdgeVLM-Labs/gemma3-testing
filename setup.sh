@@ -74,6 +74,12 @@ echo "📦 Upgrading pip..."
 python -m pip install --upgrade pip --quiet
 
 # ----------------------------
+# Install PyTorch first (required by mamba-ssm)
+# ----------------------------
+echo "🔥 Installing PyTorch with CUDA 12.1 (required for building mamba-ssm)..."
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 --quiet
+
+# ----------------------------
 # Install requirements
 # ----------------------------
 if [ ! -f requirements.txt ]; then
@@ -83,6 +89,16 @@ fi
 
 echo "📦 Installing requirements..."
 pip install -r requirements.txt --quiet || true
+
+# ----------------------------
+# Fix mamba-ssm installation (requires torch during build)
+# ----------------------------
+echo "🐍 Installing mamba-ssm with proper build flags..."
+pip uninstall -y mamba-ssm --quiet 2>/dev/null || true
+pip cache purge --quiet 2>/dev/null || true
+pip install mamba-ssm --no-cache-dir --no-build-isolation --quiet || {
+    echo "⚠️  mamba-ssm installation failed. Run 'bash fix_torch_int1.sh' to fix."
+}
 
 # ----------------------------
 # Core dependencies

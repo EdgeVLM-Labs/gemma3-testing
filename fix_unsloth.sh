@@ -2,6 +2,8 @@
 # ==========================================
 # Fix Unsloth and PEFT Compatibility Issue
 # ==========================================
+# Note: If you also have mamba-ssm issues, run fix_torch_int1.sh instead
+# which fixes torch, unsloth, AND mamba-ssm together.
 
 echo "🔧 Fixing unsloth and peft compatibility..."
 

@@ -1,14 +1,19 @@
 # Core dependencies for Gemma-3N fine-tuning with Unsloth
-transformers==4.56.2
-tokenizers
-sentencepiece
-protobuf
+# NOTE: PyTorch MUST be installed first (required by mamba-ssm build process)
+# If you get "ModuleNotFoundError: No module named 'torch'" when installing
+# mamba-ssm, run: bash fix_torch_int1.sh or bash finetune_env.sh
 
-# PyTorch and related
+# PyTorch and related (INSTALL FIRST)
 torch>=2.1.0
 torchao>=0.6.0
 accelerate>=0.34.1
 bitsandbytes>=0.45.5
+
+# Transformers and tokenizers
+transformers==4.56.2
+tokenizers
+sentencepiece
+protobuf
 
 # Unsloth for efficient fine-tuning
 unsloth
@@ -71,6 +76,11 @@ albumentations
 opencv-python-headless
 
 # Video processing (optional - for VideoMamba support)
+# IMPORTANT: mamba-ssm requires torch to be installed BEFORE building
+# If installation fails with "ModuleNotFoundError: No module named 'torch'":
+#   - Run: bash fix_torch_int1.sh (comprehensive fix)
+#   - Run: bash finetune_env.sh (full environment setup)
+#   - Manual: pip install mamba-ssm --no-cache-dir --no-build-isolation
 mamba-ssm==1.2.0
 
 # Typing extensions (for compatibility)
