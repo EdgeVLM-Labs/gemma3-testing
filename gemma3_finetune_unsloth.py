@@ -465,6 +465,9 @@ def create_trainer(
         max_length=args.max_seq_length,
     )
     
+    print("⏳ Creating SFTTrainer instance...")
+    print("   (This may take several minutes for large datasets)")
+    
     # Create trainer
     trainer = SFTTrainer(
         model=model,
@@ -478,6 +481,8 @@ def create_trainer(
         ),
         args=training_args,
     )
+    
+    print("✅ SFTTrainer instance created")
     
     return trainer
 
@@ -519,7 +524,8 @@ def main():
     parser.add_argument("--warmup_ratio", type=float, default=0.05)
     parser.add_argument("--max_grad_norm", type=float, default=0.3)
     parser.add_argument("--weight_decay", type=float, default=0.001)
-    parser.add_argument("--dataloader_num_workers", type=int, default=2)
+    parser.add_argument("--dataloader_num_workers", type=int, default=0, 
+                        help="DataLoader workers (0=main process, avoids hangs with large datasets)")
     parser.add_argument("--per_device_eval_batch_size", type=int, default=8)
     
     # Checkpointing
@@ -605,6 +611,9 @@ def main():
     print("✅ LoRA configured\n")
     
     # Load datasets
+    print(f"\n{'='*80}")
+    print(f"Loading Training Dataset")
+    print(f"{'='*80}")
     train_dataset = load_dataset_parallel(
         args.train_json,
         num_frames=args.num_frames,
@@ -613,9 +622,13 @@ def main():
         max_samples=args.max_train_samples,
         num_workers=args.num_workers
     )
+    print(f"✅ Training dataset loaded: {len(train_dataset)} samples\n")
     
     eval_dataset = None
     if args.run_eval and args.val_json and os.path.exists(args.val_json):
+        print(f"{'='*80}")
+        print(f"Loading Validation Dataset")
+        print(f"{'='*80}")
         eval_dataset = load_dataset_parallel(
             args.val_json,
             num_frames=args.num_frames,
@@ -624,16 +637,30 @@ def main():
             max_samples=args.max_val_samples,
             num_workers=args.num_workers
         )
+        print(f"✅ Validation dataset loaded: {len(eval_dataset)} samples\n")
     
-    # Free memory
+    # Free memory before trainer creation
+    print("🧹 Cleaning up memory...")
     gc.collect()
     torch.cuda.empty_cache()
+    print("✅ Memory cleaned\n")
     
     # Enable training
+    print("🔧 Enabling training mode...")
     FastVisionModel.for_training(model)
+    print("✅ Training mode enabled\n")
     
     # Create trainer
+    print(f"{'='*80}")
+    print(f"Creating Trainer (this may take a few minutes with large datasets)...")
+    print(f"{'='*80}")
+    print(f"📊 Dataset size: {len(train_dataset)} training samples")
+    if eval_dataset:
+        print(f"📊 Validation size: {len(eval_dataset)} samples")
+    print(f"⏳ Initializing trainer components...\n")
+    
     trainer = create_trainer(model, processor, train_dataset, eval_dataset, args)
+    print(f"✅ Trainer created successfully\n")
     
     # GPU stats
     gpu_stats = torch.cuda.get_device_properties(0)

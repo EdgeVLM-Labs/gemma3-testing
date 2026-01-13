@@ -54,7 +54,7 @@ MAX_SEQ_LENGTH=4096  # Increased for video frames with multiple image tokens
 WARMUP_RATIO=0.05
 MAX_GRAD_NORM=0.3
 WEIGHT_DECAY=0.001
-DATALOADER_NUM_WORKERS=2
+DATALOADER_NUM_WORKERS=0  # Set to 0 to avoid hangs with large datasets
 PER_DEVICE_EVAL_BATCH_SIZE=8
 
 # LoRA configuration
