@@ -44,18 +44,18 @@ fi
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUTPUT_DIR="outputs/gemma3n_${TIMESTAMP}"
 
-# Hyperparameters (as specified)
-BATCH_SIZE=8
-GRAD_ACCUM=4
+# Hyperparameters (optimized for 48GB GPU)
+BATCH_SIZE=2  # Reduced from 8 to save memory
+GRAD_ACCUM=16  # Increased from 4 to maintain effective batch size of 32
 LEARNING_RATE=2e-4
 PROJECTOR_LR=1e-4
 NUM_EPOCHS=3
-MAX_SEQ_LENGTH=4096  # Increased for video frames with multiple image tokens
+MAX_SEQ_LENGTH=2048  # Reduced from 4096 to save memory
 WARMUP_RATIO=0.05
 MAX_GRAD_NORM=0.3
 WEIGHT_DECAY=0.001
 DATALOADER_NUM_WORKERS=2
-PER_DEVICE_EVAL_BATCH_SIZE=8
+PER_DEVICE_EVAL_BATCH_SIZE=1  # Reduced from 8 to prevent OOM during evaluation
 
 # LoRA configuration
 LORA_R=64
@@ -63,7 +63,7 @@ LORA_ALPHA=128
 LORA_DROPOUT=0.0
 
 # Video processing
-NUM_FRAMES=16
+NUM_FRAMES=8  # Reduced from 16 to save memory
 RESOLUTION=224
 NUM_WORKERS=8  # Parallel video processing
 
