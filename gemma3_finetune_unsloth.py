@@ -30,10 +30,31 @@ import numpy as np
 import cv2
 from PIL import Image
 from datasets import Dataset
+from torch.utils.data import Dataset as TorchDataset
 from huggingface_hub import login
 from unsloth import FastVisionModel, get_chat_template
 from unsloth.trainer import UnslothVisionDataCollator
 from trl import SFTTrainer, SFTConfig
+
+
+# ============================================================================
+# Custom Dataset Class (avoids HuggingFace Arrow serialization)
+# ============================================================================
+
+class VideoDataset(TorchDataset):
+    """
+    Custom PyTorch Dataset that holds video data without Arrow serialization.
+    This is much faster than HuggingFace Dataset.from_list() for large datasets with images.
+    """
+    def __init__(self, data_list):
+        self.data = data_list
+    
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, idx):
+        return self.data[idx]
+
 
 # ============================================================================
 # Video Processing with Robust Error Handling
@@ -253,7 +274,7 @@ def load_dataset_parallel(
     video_dir: Optional[str] = None,
     max_samples: Optional[int] = None,
     num_workers: int = 8
-) -> Dataset:
+) -> VideoDataset:
     """
     Load dataset from JSON with parallel video processing.
     
@@ -266,7 +287,7 @@ def load_dataset_parallel(
         num_workers: Number of parallel workers
         
     Returns:
-        HuggingFace Dataset
+        VideoDataset (custom PyTorch Dataset)
     """
     print(f"\n{'='*80}")
     print(f"Loading Dataset from {json_path}")
@@ -373,21 +394,11 @@ def load_dataset_parallel(
         print(f"⚠️  WARNING: Only {len(dataset)/len(data)*100:.1f}% of samples loaded!")
         print(f"   Consider checking video paths or filtering the JSON file.\n")
     
-    print(f"⏳ Converting to HuggingFace Dataset (this may take a moment)...", flush=True)
+    print(f"✅ Dataset ready (using custom VideoDataset to avoid serialization overhead)\n", flush=True)
     
-    # Create dataset without deep copying images to avoid memory issues
-    # Disable pyarrow to prevent serialization issues with PIL images
-    import datasets
-    datasets.disable_caching()
-    
-    hf_dataset = Dataset.from_list(dataset)
-    
-    # Disable format transforms to keep PIL images as-is
-    hf_dataset.set_format(type=None)
-    
-    print(f"✅ HuggingFace Dataset created\n", flush=True)
-    
-    return hf_dataset
+    # Return custom dataset class instead of HuggingFace Dataset
+    # This avoids the extremely slow Arrow serialization of PIL images
+    return VideoDataset(dataset)
 
 
 # ============================================================================
@@ -397,8 +408,8 @@ def load_dataset_parallel(
 def create_trainer(
     model,
     processor,
-    train_dataset: Dataset,
-    eval_dataset: Optional[Dataset],
+    train_dataset: VideoDataset,
+    eval_dataset: Optional[VideoDataset],
     args: argparse.Namespace
 ) -> SFTTrainer:
     """Create SFTTrainer with optimized configuration."""
