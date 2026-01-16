@@ -78,20 +78,24 @@ def load_model(model_path: str, device: str = "cuda"):
     
     if is_custom_model:
         print(f"🔍 Detected fine-tuned model from HuggingFace: {model_path}")
+        print("📥 Loading with transformers (bypassing Unsloth for fine-tuned models)...")
         
-        # Use FastModel for fine-tuned models (like in gemma3n_batch_inference.py)
-        from unsloth import FastModel
+        from transformers import AutoTokenizer, AutoModel
         
-        torch._dynamo.config.recompile_limit = 64
-        
-        model, tokenizer = FastModel.from_pretrained(
-            model_name=model_path,
-            dtype=None,  # Auto detection
-            max_seq_length=50000,
-            load_in_4bit=False,
+        # Load tokenizer and model directly with transformers
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path,
             trust_remote_code=True,
         )
-        print("✅ Fine-tuned model loaded with FastModel!")
+        print("✅ Tokenizer loaded!")
+        
+        model = AutoModel.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
+            device_map=device,
+        )
+        print("✅ Fine-tuned model loaded!")
         
     else:
         # Standard Unsloth loading for base models
