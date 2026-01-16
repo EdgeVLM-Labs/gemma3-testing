@@ -73,31 +73,38 @@ def load_model(model_path: str, device: str = "cuda"):
     """Load Gemma-3N model using Unsloth FastVisionModel."""
     print(f"📦 Loading model from: {model_path}")
     
-    # Try loading with tokenizer from the model path first
     try:
         model, tokenizer = FastVisionModel.from_pretrained(
             model_name=model_path,
             dtype=None,  # Auto detection
             max_seq_length=50000,
             load_in_4bit=False,
+            trust_remote_code=True,  # Required for custom models
+            token=True,  # Use HF token from environment
         )
-    except RuntimeError as e:
-        if "tokenizer is weirdly not loaded" in str(e):
-            print("⚠️  Tokenizer not found in model repo, loading from base model...")
-            # Load model without tokenizer, then load tokenizer from base model
-            model, _ = FastVisionModel.from_pretrained(
-                model_name=model_path,
-                dtype=None,
-                max_seq_length=50000,
-                load_in_4bit=False,
-                tokenizer_name="unsloth/gemma-3n-E2B-it",  # Base model tokenizer
-            )
-            # Load tokenizer explicitly
-            from transformers import AutoTokenizer
-            tokenizer = AutoTokenizer.from_pretrained("unsloth/gemma-3n-E2B-it")
-            print("✅ Loaded tokenizer from base model: unsloth/gemma-3n-E2B-it")
-        else:
-            raise
+    except Exception as e:
+        print(f"⚠ First attempt failed: {e}")
+        print("🔄 Trying alternative loading method...")
+        
+        # Try loading tokenizer separately first
+        from transformers import AutoTokenizer
+        print("📥 Loading tokenizer...")
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path, 
+            trust_remote_code=True,
+            token=True,
+        )
+        print("✅ Tokenizer loaded!")
+        
+        # Now try loading the model
+        model, tokenizer = FastVisionModel.from_pretrained(
+            model_name=model_path,
+            dtype=None,
+            max_seq_length=50000,
+            load_in_4bit=False,
+            trust_remote_code=True,
+            token=True,
+        )
     
     FastVisionModel.for_inference(model)
     model.to(device)
