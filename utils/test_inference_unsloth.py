@@ -70,46 +70,32 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
 
 
 def load_model(model_path: str, device: str = "cuda"):
-    """Load Gemma-3N model using Unsloth FastVisionModel."""
+    """Load Gemma-3N model using Unsloth FastModel or FastVisionModel."""
     print(f"📦 Loading model from: {model_path}")
-    
-    # Determine base model for tokenizer
-    base_model = "unsloth/gemma-3n-E2B-it"
     
     # Check if this is a custom fine-tuned model
     is_custom_model = "/" in model_path and not model_path.startswith("unsloth/")
     
     if is_custom_model:
-        print(f"🔍 Detected fine-tuned model. Will use base model tokenizer: {base_model}")
+        print(f"🔍 Detected fine-tuned model from HuggingFace: {model_path}")
         
-        # Load tokenizer from base model
-        from transformers import AutoTokenizer
-        print(f"📥 Loading tokenizer from base model: {base_model}")
-        tokenizer = AutoTokenizer.from_pretrained(
-            base_model, 
+        # Use FastModel for fine-tuned models (like in gemma3n_batch_inference.py)
+        from unsloth import FastModel
+        
+        torch._dynamo.config.recompile_limit = 64
+        
+        model, tokenizer = FastModel.from_pretrained(
+            model_name=model_path,
+            dtype=None,  # Auto detection
+            max_seq_length=50000,
+            load_in_4bit=False,
             trust_remote_code=True,
         )
-        print("✅ Tokenizer loaded from base model!")
-        
-        # Load the fine-tuned model weights
-        print(f"📥 Loading fine-tuned model weights from: {model_path}")
-        from transformers import AutoModelForVision2Seq
-        model = AutoModelForVision2Seq.from_pretrained(
-            model_path,
-            trust_remote_code=True,
-            torch_dtype="auto",
-            device_map=device,
-        )
-        print("✅ Fine-tuned model loaded!")
-        
-        # Wrap with Unsloth for inference optimization
-        try:
-            FastVisionModel.for_inference(model)
-        except:
-            print("⚠ Could not apply Unsloth inference optimization, continuing without it...")
+        print("✅ Fine-tuned model loaded with FastModel!")
         
     else:
         # Standard Unsloth loading for base models
+        print(f"📥 Loading base model with FastVisionModel: {model_path}")
         model, tokenizer = FastVisionModel.from_pretrained(
             model_name=model_path,
             dtype=None,
@@ -118,6 +104,7 @@ def load_model(model_path: str, device: str = "cuda"):
             trust_remote_code=True,
         )
         FastVisionModel.for_inference(model)
+        print("✅ Base model loaded with FastVisionModel!")
     
     model.to(device)
     print("✅ Model ready for inference!")
