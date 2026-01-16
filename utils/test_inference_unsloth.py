@@ -125,6 +125,10 @@ def run_inference(
     num_frames: int = 8
 ):
     """Run inference on a single video."""
+    # Clear GPU cache before processing
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    
     # Extract frames
     frames = extract_frames(video_path, num_frames=num_frames)
     
@@ -150,19 +154,19 @@ def run_inference(
     
     input_token_count = inputs['input_ids'].shape[1]
     
-    # Clear GPU cache before generation
-    if device == "cuda":
-        torch.cuda.empty_cache()
-    
-    # Generate
+    # Generate with fresh state
     with torch.inference_mode():
+        # Clear any cached states in the model
+        if hasattr(model, 'reset_cache'):
+            model.reset_cache()
+        
         start_time = time.time()
         output_ids = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
-            temperature=0.1,
+            temperature=0.3,  # Increased from 0.1 for more variation
             do_sample=True,
-            use_cache=True,
+            use_cache=False,  # Disable KV cache to prevent stale outputs
             pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
         )
         end_time = time.time()
@@ -176,7 +180,9 @@ def run_inference(
     generated_token_count = len(new_tokens)
     tokens_per_second = generated_token_count / generation_time if generation_time > 0 else 0
     
-    # Clear cache after generation
+    # Clear cache and free memory after generation
+    del inputs
+    del output_ids
     if device == "cuda":
         torch.cuda.empty_cache()
     

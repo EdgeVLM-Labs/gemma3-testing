@@ -119,7 +119,8 @@ def do_inference(
     tokenizer,
     messages: List[dict],
     max_new_tokens: int = 128,
-    show_stream: bool = False
+    show_stream: bool = False,
+    device: str = "cuda"
 ) -> str:
     """
     Run inference on Gemma-3N model with chat messages.
@@ -130,10 +131,15 @@ def do_inference(
         messages: List of message dicts with role/content
         max_new_tokens: Maximum tokens to generate
         show_stream: Whether to show streaming output
+        device: Device to use
     
     Returns:
         Generated response text
     """
+    # Clear GPU cache before inference
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    
     # 1. Prepare inputs
     inputs = tokenizer.apply_chat_template(
         messages,
@@ -141,23 +147,35 @@ def do_inference(
         tokenize=True,
         return_dict=True,
         return_tensors="pt",
-    ).to("cuda")
+    ).to(device)
 
-    # 2. Generate
+    # 2. Generate with fresh state
     streamer = TextStreamer(tokenizer, skip_prompt=True) if show_stream else None
+    
+    # Clear any cached states in the model
+    if hasattr(model, 'reset_cache'):
+        model.reset_cache()
     
     outputs = model.generate(
         **inputs,
         max_new_tokens=max_new_tokens,
-        temperature=0.1,
+        temperature=0.3,  # Increased for more variation
         do_sample=True,
+        use_cache=False,  # Disable KV cache to prevent stale outputs
         streamer=streamer,
+        pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
     )
 
     # 3. Decode only the NEW tokens (the answer)
     input_length = inputs.input_ids.shape[1]
     new_tokens = outputs[0][input_length:]
     response_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
+
+    # Clear memory
+    del inputs
+    del outputs
+    if device == "cuda":
+        torch.cuda.empty_cache()
 
     return response_text
 
@@ -241,7 +259,8 @@ def process_videos(
                 tokenizer,
                 messages,
                 max_new_tokens=max_new_tokens,
-                show_stream=show_stream
+                show_stream=show_stream,
+                device="cuda"
             )
             results.append([video_file.name, response])
             print(f"  ✓ Completed\n")
