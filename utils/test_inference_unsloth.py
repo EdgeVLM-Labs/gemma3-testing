@@ -257,9 +257,8 @@ def main():
 
     for item in tqdm(test_data, desc="Processing videos"):
         video_rel_path = item['video']
-        # Extract just the filename (remove any subdirectories)
-        video_filename = Path(video_rel_path).name
-        video_path = str(Path(args.data_path) / video_filename)
+        # Keep the full relative path structure
+        video_path = str(Path(args.data_path) / video_rel_path)
         conversations = item['conversations']
         prompt = conversations[0]['value']
         ground_truth = conversations[1]['value']
