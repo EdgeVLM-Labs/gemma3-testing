@@ -8,6 +8,35 @@ Fine-tune Google's **Gemma-3N (unsloth/gemma-3n-E2B-it)** model on video dataset
 
 ## 🚀 Quick Start
 
+### For RunPod Users
+
+```bash
+# 1. Install dependencies and clone repo
+apt-get update && apt-get install -y wget git build-essential
+git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
+cd gemma3-testing
+git checkout gemma-1
+
+# 2. Run automated setup
+bash setup.sh
+
+# If setup installs conda for first time, restart shell and run again:
+source ~/.bashrc
+bash setup.sh
+
+# 3. Activate environment
+conda activate gemma3n
+
+# 4. Run inference on sample videos
+python create_test_json.py --video_dir sample_videos
+bash scripts/run_inference.sh \
+  --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 \
+  --test_json dataset/qved_test.json \
+  --data_path sample_videos
+```
+
+### For Local/VM Setup
+
 ```bash
 # Install system dependencies (Ubuntu/Debian)
 apt-get update
@@ -199,6 +228,22 @@ conda activate gemma3n
 
 #### Issue: "Terms of Service have not been accepted"
 
+**Solution:** (Required for newer conda versions)
+```bash
+# Accept conda Terms of Service
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+# Then create environment
+conda create -n gemma3n python=3.11 -y
+conda activate gemma3n
+```
+
+**Or simply run the updated setup script which handles this automatically:**
+```bash
+bash setup.sh
+```
+
 **Solution:**
 The updated setup.sh now handles this automatically! If you still see this error:
 ```bash
@@ -244,7 +289,26 @@ For complete troubleshooting steps and solutions, see **[SETUP_TROUBLESHOOTING.m
 
 The `dataset.py` script manages the **QVED (Quality Video Exercise Dataset)** from EdgeVLM-Labs/QVED-Test-Dataset:
 
-### Download Videos
+### Create Test Dataset from Your Videos
+
+For quick inference testing with your own videos:
+
+```bash
+# Create test JSON from a video directory
+python create_test_json.py --video_dir sample_videos
+# Output: dataset/qved_test.json
+
+# Or specify custom output location
+python create_test_json.py \
+  --video_dir /path/to/videos \
+  --output dataset/my_test.json
+```
+
+This generates a test dataset JSON that can be used with the inference scripts.
+
+### Download QVED Dataset
+
+For training and evaluation:
 
 ```bash
 # Download 5 videos per exercise class (fast - for testing)
@@ -559,13 +623,42 @@ tracking over the toes consistently.
 
 ### Batch Inference (Multiple Videos)
 
-For processing multiple videos:
+For processing multiple videos at once:
 
 ```bash
-python scripts/run_inference_unsloth.py \
-    --model_path outputs/gemma3n_finetune_merged_16bit \
-    --video_dir test_videos/ \
-    --output_file results/batch_predictions.json
+# Create test dataset from your videos
+python create_test_json.py --video_dir sample_videos --output dataset/qved_test.json
+
+# Run inference on test set with fine-tuned model
+bash scripts/run_inference.sh \
+  --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 \
+  --test_json dataset/qved_test.json \
+  --data_path sample_videos \
+  --limit 10
+
+# Or use a local fine-tuned model
+bash scripts/run_inference.sh \
+  --model_path outputs/gemma3n_finetune_merged_16bit \
+  --test_json dataset/qved_test.json \
+  --data_path test_videos \
+  --max_new_tokens 256 \
+  --num_frames 8
+```
+
+**Output files:**
+- Predictions JSON: `results/test_inference_<model_name>/test_predictions.json`
+- Evaluation Report: `results/test_inference_<model_name>/test_evaluation_report.xlsx`
+
+**Direct Python script:**
+```bash
+python utils/test_inference_unsloth.py \
+    --model_path EdgeVLM-Labs/gemma-3n-E2B-qved-1000 \
+    --test_json dataset/qved_test.json \
+    --data_path sample_videos \
+    --output results/predictions.json \
+    --device cuda \
+    --max_new_tokens 256 \
+    --num_frames 8
 ```
 
 ---
@@ -799,11 +892,30 @@ python utils/generate_test_report.py \
 - **Cause:** DeepSpeed not installed
 - **Solution:** Already disabled by default. To use: `pip install deepspeed` and edit script
 
-**4. `Video file not found`**
-- **Cause:** Videos not in correct directory
-- **Solution:** Ensure videos are in `videos/` or `workspace/gemma3-testing/videos/`
+**4. `Video file not found` or `Could not open video file`**
+- **Cause:** Incorrect video path or `--data_path` argument
+- **Solution:** 
+  ```bash
+  # Check where your videos are located
+  ls test_videos/
+  
+  # Make sure --data_path matches your directory structure
+  # If videos are in test_videos/video1.mp4:
+  bash scripts/run_inference.sh --data_path test_videos
+  
+  # If videos are in subdirectories like test_videos/squats/video1.mp4:
+  bash scripts/run_inference.sh --data_path test_videos
+  # (The script will look for subdirectories automatically)
+  ```
 
-**5. CUDA Out of Memory**
+**5. `RuntimeError: Unsloth: The tokenizer is weirdly not loaded?`**
+- **Cause:** Fine-tuned model tokenizer loading issue
+- **Solution:** Already fixed in latest version. Pull updates:
+  ```bash
+  git pull origin gemma-1
+  ```
+
+**6. CUDA Out of Memory**
 - Reduce `batch_size` or `gradient_accumulation`
 - Reduce `lora_r` (e.g., from 64 to 32)
 - Enable 4-bit quantization: `LOAD_IN_4BIT="--load_in_4bit"`

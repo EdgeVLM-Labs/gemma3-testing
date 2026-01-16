@@ -27,6 +27,13 @@ else
 fi
 
 # ----------------------------
+# Accept conda Terms of Service (if required)
+# ----------------------------
+echo "📜 Accepting conda Terms of Service..."
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main 2>/dev/null || true
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r 2>/dev/null || true
+
+# ----------------------------
 # FORCE conda-forge only (CRITICAL FIX)
 # ----------------------------
 echo "🔒 Forcing conda-forge only (avoiding Anaconda ToS)..."

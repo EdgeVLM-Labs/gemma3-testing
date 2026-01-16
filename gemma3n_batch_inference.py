@@ -136,9 +136,13 @@ def do_inference(
     Returns:
         Generated response text
     """
-    # Clear GPU cache before inference
+    # FORCE clear GPU cache and model state before inference
     if device == "cuda":
         torch.cuda.empty_cache()
+    
+    # Clear model's past_key_values cache if it exists
+    if hasattr(model, 'past_key_values'):
+        model.past_key_values = None
     
     # 1. Prepare inputs
     inputs = tokenizer.apply_chat_template(
@@ -149,19 +153,18 @@ def do_inference(
         return_tensors="pt",
     ).to(device)
 
-    # 2. Generate with fresh state
+    # 2. Generate with fresh state and better sampling
     streamer = TextStreamer(tokenizer, skip_prompt=True) if show_stream else None
-    
-    # Clear any cached states in the model
-    if hasattr(model, 'reset_cache'):
-        model.reset_cache()
     
     outputs = model.generate(
         **inputs,
         max_new_tokens=max_new_tokens,
-        temperature=0.3,  # Increased for more variation
+        temperature=0.7,      # Increased for more variation
+        top_p=0.9,            # Add nucleus sampling
+        top_k=50,             # Add top-k sampling
         do_sample=True,
-        use_cache=False,  # Disable KV cache to prevent stale outputs
+        use_cache=True,       # Enable cache for generation efficiency
+        past_key_values=None, # Explicitly reset cache
         streamer=streamer,
         pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
     )
@@ -171,7 +174,7 @@ def do_inference(
     new_tokens = outputs[0][input_length:]
     response_text = tokenizer.decode(new_tokens, skip_special_tokens=True)
 
-    # Clear memory
+    # CRITICAL: Clear memory after generation
     del inputs
     del outputs
     if device == "cuda":
