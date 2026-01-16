@@ -128,18 +128,18 @@ def run_inference(
     # Extract frames
     frames = extract_frames(video_path, num_frames=num_frames)
     
-    # Prepare messages
+    # Prepare messages with actual image frames
     messages = [
         {
             "role": "user",
             "content": [
-                *[{"type": "image"} for _ in range(num_frames)],
+                *[{"type": "image", "image": frame} for frame in frames],
                 {"type": "text", "text": prompt}
             ]
         }
     ]
     
-    # Tokenize with chat template
+    # Tokenize with chat template - this will process the images
     inputs = tokenizer.apply_chat_template(
         messages,
         add_generation_prompt=True,
@@ -150,6 +150,10 @@ def run_inference(
     
     input_token_count = inputs['input_ids'].shape[1]
     
+    # Clear GPU cache before generation
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    
     # Generate
     with torch.inference_mode():
         start_time = time.time()
@@ -159,6 +163,7 @@ def run_inference(
             temperature=0.1,
             do_sample=True,
             use_cache=True,
+            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
         )
         end_time = time.time()
         generation_time = end_time - start_time
@@ -170,6 +175,10 @@ def run_inference(
     
     generated_token_count = len(new_tokens)
     tokens_per_second = generated_token_count / generation_time if generation_time > 0 else 0
+    
+    # Clear cache after generation
+    if device == "cuda":
+        torch.cuda.empty_cache()
     
     return response_text, {
         'generated_tokens': generated_token_count,
