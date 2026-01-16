@@ -80,7 +80,7 @@ def load_model(model_path: str, device: str = "cuda"):
         print(f"🔍 Detected fine-tuned model from HuggingFace: {model_path}")
         print("📥 Loading with transformers (bypassing Unsloth for fine-tuned models)...")
         
-        from transformers import AutoTokenizer, AutoModel
+        from transformers import AutoTokenizer, AutoModelForCausalLM
         
         # Load tokenizer and model directly with transformers
         tokenizer = AutoTokenizer.from_pretrained(
@@ -89,7 +89,7 @@ def load_model(model_path: str, device: str = "cuda"):
         )
         print("✅ Tokenizer loaded!")
         
-        model = AutoModel.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             model_path,
             trust_remote_code=True,
             torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
