@@ -67,22 +67,50 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
 
 
 def load_model(model_name: str = "unsloth/gemma-3n-E2B-it", device: str = "cuda"):
-    """Load Gemma-3N model using Unsloth FastModel."""
+    """Load Gemma-3N model using Unsloth FastModel or transformers."""
     print(f"Loading model: {model_name}...")
     
-    torch._dynamo.config.recompile_limit = 64
+    # Check if this is a custom fine-tuned model
+    is_custom_model = "/" in model_name and not model_name.startswith("unsloth/")
     
-    model, tokenizer = FastModel.from_pretrained(
-        model_name=model_name,
-        dtype=None,  # None for auto detection
-        max_seq_length=1024,
-        load_in_4bit=False,
-        full_finetuning=False,
-        # token="hf_...",  # use one if using gated models
-    )
+    if is_custom_model:
+        print(f"🔍 Detected fine-tuned model from HuggingFace: {model_name}")
+        print("📥 Loading with transformers (bypassing Unsloth for fine-tuned models)...")
+        
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+        
+        # Load tokenizer and model directly with transformers
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            trust_remote_code=True,
+        )
+        print("✅ Tokenizer loaded!")
+        
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            trust_remote_code=True,
+            dtype=torch.bfloat16 if device == "cuda" else torch.float32,
+            device_map=device,
+        )
+        print("✅ Fine-tuned model loaded!")
+        
+    else:
+        # Standard Unsloth loading for base models
+        print(f"📥 Loading base model with FastModel: {model_name}")
+        
+        torch._dynamo.config.recompile_limit = 64
+        
+        model, tokenizer = FastModel.from_pretrained(
+            model_name=model_name,
+            dtype=None,  # None for auto detection
+            max_seq_length=1024,
+            load_in_4bit=False,
+            full_finetuning=False,
+        )
+        print("✅ Base model loaded!")
     
     model.to(device)
-    print("✓ Model loaded successfully!")
+    print("✓ Model ready for inference!")
     return model, tokenizer
 
 
