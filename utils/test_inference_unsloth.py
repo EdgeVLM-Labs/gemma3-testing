@@ -92,7 +92,7 @@ def load_model(model_path: str, device: str = "cuda"):
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
             trust_remote_code=True,
-            torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
+            dtype=torch.bfloat16 if device == "cuda" else torch.float32,
             device_map=device,
         )
         print("✅ Fine-tuned model loaded!")

@@ -19,7 +19,7 @@ DEVICE="cuda"
 MAX_NEW_TOKENS=256
 NUM_FRAMES=8
 LIMIT="50"
-NO_BERT=""
+NO_BERT="--no-bert"  # Skip BERT by default to avoid network timeouts
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -64,6 +64,10 @@ while [[ $# -gt 0 ]]; do
             NO_BERT="--no-bert"
             shift
             ;;
+        --use-bert)
+            NO_BERT=""
+            shift
+            ;;
         -h|--help)
             echo "Usage: bash scripts/run_inference.sh [--model_path <path> | --hf_repo <repo>] [options]"
             echo ""
@@ -79,7 +83,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --max_new_tokens  Max tokens to generate (default: 256)"
             echo "  --num_frames      Frames to extract per video (default: 8)"
             echo "  --limit           Limit number of samples (default: 50)"
-            echo "  --no-bert         Skip BERT similarity (faster evaluation)"
+            echo "  --no-bert         Skip BERT similarity (enabled by default)"
+            echo "  --use-bert        Enable BERT similarity calculation"
             echo ""
             exit 0
             ;;
