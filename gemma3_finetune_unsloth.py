@@ -558,7 +558,7 @@ def main():
     )
     
     # Model
-    parser.add_argument("--model_name", type=str, default="unsloth/gemma-3n-E2B-it")
+    parser.add_argument("--model_name", type=str, default="unsloth/gemma-3n-E4B-it")
     parser.add_argument("--load_in_4bit", action="store_true")
     
     # Dataset
