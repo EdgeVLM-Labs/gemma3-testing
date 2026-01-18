@@ -31,11 +31,12 @@ import cv2
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
-from unsloth import FastVisionModel
+from unsloth import FastModel
+from transformers import TextStreamer
 
 
 def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
-    """Extract evenly-spaced frames from a video file using numpy.linspace."""
+    """Extract evenly-spaced frames from a video file."""
     cap = cv2.VideoCapture(str(video_path))
 
     if not cap.isOpened():
@@ -47,12 +48,13 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
         cap.release()
         raise ValueError(f"Video has no frames: {video_path}")
     
-    # Use numpy.linspace for evenly-spaced frame indices
-    frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
+    # Calculate step size for frame extraction
+    step = total_frames // num_frames
     frames = []
 
-    for frame_idx in frame_indices:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
+    for i in range(num_frames):
+        frame_idx = i * step
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
         if not ret:
             break
@@ -70,45 +72,17 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
 
 
 def load_model(model_path: str, device: str = "cuda"):
-    """Load Gemma-3N model using Unsloth FastModel or FastVisionModel."""
+    """Load Gemma-3N model using Unsloth FastModel."""
     print(f"📦 Loading model from: {model_path}")
     
-    # Check if this is a custom fine-tuned model
-    is_custom_model = "/" in model_path and not model_path.startswith("unsloth/")
-    
-    if is_custom_model:
-        print(f"🔍 Detected fine-tuned model from HuggingFace: {model_path}")
-        print("📥 Loading with transformers (bypassing Unsloth for fine-tuned models)...")
-        
-        from transformers import AutoTokenizer, AutoModelForCausalLM
-        
-        # Load tokenizer and model directly with transformers
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_path,
-            trust_remote_code=True,
-        )
-        print("✅ Tokenizer loaded!")
-        
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            trust_remote_code=True,
-            dtype=torch.bfloat16 if device == "cuda" else torch.float32,
-            device_map=device,
-        )
-        print("✅ Fine-tuned model loaded!")
-        
-    else:
-        # Standard Unsloth loading for base models
-        print(f"📥 Loading base model with FastVisionModel: {model_path}")
-        model, tokenizer = FastVisionModel.from_pretrained(
-            model_name=model_path,
-            dtype=None,
-            max_seq_length=50000,
-            load_in_4bit=False,
-            trust_remote_code=True,
-        )
-        FastVisionModel.for_inference(model)
-        print("✅ Base model loaded with FastVisionModel!")
+    # Use FastModel for all models
+    model, tokenizer = FastModel.from_pretrained(
+        model_name=model_path,
+        dtype=None,  # Auto detection
+        max_seq_length=1024,
+        load_in_4bit=False,
+        trust_remote_code=True,
+    )
     
     model.to(device)
     print("✅ Model ready for inference!")
@@ -125,20 +99,6 @@ def run_inference(
     num_frames: int = 8
 ):
     """Run inference on a single video."""
-    # FORCE clear GPU cache and model state before processing
-    if device == "cuda":
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
-    
-    # Reset model to ensure clean state
-    model.eval()
-    
-    # Clear any cached states in the model
-    if hasattr(model, 'past_key_values'):
-        model.past_key_values = None
-    if hasattr(model, '_past'):
-        model._past = None
-    
     # Extract frames
     frames = extract_frames(video_path, num_frames=num_frames)
     
@@ -153,7 +113,7 @@ def run_inference(
         }
     ]
     
-    # Tokenize with chat template - this will process the images
+    # Tokenize with chat template
     inputs = tokenizer.apply_chat_template(
         messages,
         add_generation_prompt=True,
@@ -162,46 +122,24 @@ def run_inference(
         return_tensors="pt",
     ).to(device)
     
-    input_token_count = inputs['input_ids'].shape[1]
+    # Generate
+    start_time = time.time()
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=max_new_tokens,
+        temperature=0.1,
+        do_sample=True,
+    )
+    end_time = time.time()
+    generation_time = end_time - start_time
     
-    # Generate with completely fresh state and proper sampling
-    with torch.inference_mode():
-        # Set random seed differently for each call to ensure variation
-        torch.manual_seed(int(time.time() * 1000000) % (2**32))
-        if device == "cuda":
-            torch.cuda.manual_seed_all(int(time.time() * 1000000) % (2**32))
-        
-        start_time = time.time()
-        output_ids = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            temperature=0.7,
-            top_p=0.9,
-            top_k=50,
-            do_sample=True,
-            use_cache=False,  # Disable cache to prevent state leakage
-            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-            repetition_penalty=1.1,  # Prevent repetitive outputs
-        )
-        end_time = time.time()
-        generation_time = end_time - start_time
-    
-    # Decode output - only the NEW tokens (the answer)
-    input_length = inputs['input_ids'].shape[1]
-    new_tokens = output_ids[0][input_length:]
+    # Decode only the NEW tokens (the answer)
+    input_length = inputs.input_ids.shape[1]
+    new_tokens = outputs[0][input_length:]
     response_text = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
     
     generated_token_count = len(new_tokens)
     tokens_per_second = generated_token_count / generation_time if generation_time > 0 else 0
-    
-    # CRITICAL: Clear everything after generation
-    del inputs
-    del output_ids
-    del new_tokens
-    if device == "cuda":
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
     
     return response_text, {
         'generated_tokens': generated_token_count,
