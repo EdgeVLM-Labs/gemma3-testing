@@ -75,16 +75,46 @@ def load_model(model_path: str, device: str = "cuda"):
     """Load Gemma-3N model using Unsloth FastModel."""
     print(f"📦 Loading model from: {model_path}")
     
-    # Use FastModel for all models
-    model, tokenizer = FastModel.from_pretrained(
-        model_name=model_path,
-        dtype=None,  # Auto detection
-        max_seq_length=1024,
-        load_in_4bit=False,
-        trust_remote_code=True,
-    )
+    # Check if this is a local fine-tuned model
+    is_local_model = os.path.exists(model_path)
+    
+    if is_local_model:
+        print(f"🔍 Loading local fine-tuned model: {model_path}")
+        try:
+            # Try with FastModel first
+            model, tokenizer = FastModel.from_pretrained(
+                model_name=model_path,
+                dtype=None,
+                max_seq_length=2048,
+                load_in_4bit=False,
+                trust_remote_code=True,
+            )
+            print("✅ Loaded with FastModel")
+        except Exception as e:
+            print(f"⚠ FastModel failed, using AutoModel: {e}")
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path,
+                torch_dtype=torch.bfloat16,
+                device_map="auto",
+                trust_remote_code=True,
+            )
+            print("✅ Loaded with AutoModel")
+    else:
+        # Load from HuggingFace
+        print(f"📥 Loading from HuggingFace: {model_path}")
+        model, tokenizer = FastModel.from_pretrained(
+            model_name=model_path,
+            dtype=None,
+            max_seq_length=2048,
+            load_in_4bit=False,
+            trust_remote_code=True,
+        )
+        print("✅ Loaded from HuggingFace")
     
     model.to(device)
+    model.eval()
     print("✅ Model ready for inference!")
     return model, tokenizer
 
@@ -144,18 +174,13 @@ def run_inference(
     
     start_time = time.time()
     
-    # Generate with no caching to prevent state reuse
+    # Generate - pass all inputs as kwargs
     with torch.no_grad():
         outputs = model.generate(
-            input_ids=inputs.input_ids,
-            attention_mask=inputs.attention_mask,
-            pixel_values=inputs.pixel_values if 'pixel_values' in inputs else None,
+            **inputs,
             max_new_tokens=max_new_tokens,
-            temperature=0.7,  # Increase temperature for more variation
-            top_p=0.9,
-            top_k=50,
+            temperature=0.3,  # Lower for more focused, accurate responses
             do_sample=True,
-            use_cache=False,  # Disable KV cache
             pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
             eos_token_id=tokenizer.eos_token_id,
         )
