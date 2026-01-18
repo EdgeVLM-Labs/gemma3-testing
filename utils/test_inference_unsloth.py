@@ -124,6 +124,18 @@ def run_inference(
     debug: bool = False
 ):
     """Run inference on a single video."""
+    # CRITICAL: Clear all caches before processing
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    gc.collect()
+    
+    # Reset model state completely
+    if hasattr(model, 'model'):
+        if hasattr(model.model, 'past_key_values'):
+            model.model.past_key_values = None
+        if hasattr(model.model, '_past_key_values'):
+            model.model._past_key_values = None
+    
     # Extract frames fresh for each video
     frames = extract_frames(video_path, num_frames=num_frames)
     
@@ -158,16 +170,24 @@ def run_inference(
         else:
             print(f"⚠️ WARNING: No pixel_values in inputs! Vision encoding may have failed.")
     
+    # Set unique seed per inference to break any deterministic patterns
+    unique_seed = int(time.time() * 1000000 + hash(video_path)) % (2**32)
+    torch.manual_seed(unique_seed)
+    if device == "cuda":
+        torch.cuda.manual_seed_all(unique_seed)
+    
     start_time = time.time()
     
-    # Generate - simple and clean like working example
-    outputs = model.generate(
-        **inputs,
-        max_new_tokens=max_new_tokens,
-        temperature=temperature,
-        do_sample=True,
-        pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-    )
+    # Generate with explicit no_grad and no cache between calls
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            temperature=0.3,  # Slight increase for variation while keeping quality
+            do_sample=True,
+            use_cache=False,  # Disable KV cache to prevent cross-inference contamination
+            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+        )
     
     end_time = time.time()
     generation_time = end_time - start_time
@@ -182,6 +202,12 @@ def run_inference(
     
     generated_token_count = len(new_tokens)
     tokens_per_second = generated_token_count / generation_time if generation_time > 0 else 0
+    
+    # Aggressive cleanup
+    del inputs, outputs, new_tokens, frames, messages
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    gc.collect()
     
     return response_text, {
         'generated_tokens': generated_token_count,
