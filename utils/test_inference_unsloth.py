@@ -99,11 +99,21 @@ def run_inference(
     num_frames: int = 8
 ):
     """Run inference on a single video."""
-    # Clear cache before processing to prevent state carryover
+    # Aggressively clear all cached states
     if device == "cuda":
         torch.cuda.empty_cache()
+        torch.cuda.synchronize()
     
-    # Extract frames
+    # Reset model state completely
+    model.eval()
+    if hasattr(model, 'past_key_values'):
+        model.past_key_values = None
+    if hasattr(model, '_past_key_values'):
+        model._past_key_values = None
+    if hasattr(model, 'cache'):
+        model.cache = None
+    
+    # Extract frames - ensure fresh frames each time
     frames = extract_frames(video_path, num_frames=num_frames)
     
     # Prepare messages with actual image frames
@@ -117,7 +127,7 @@ def run_inference(
         }
     ]
     
-    # Tokenize with chat template
+    # Tokenize with chat template - create fresh inputs
     inputs = tokenizer.apply_chat_template(
         messages,
         add_generation_prompt=True,
@@ -126,19 +136,30 @@ def run_inference(
         return_tensors="pt",
     ).to(device)
     
-    # Generate with fresh random seed for each video
-    torch.manual_seed(int(time.time() * 1000000) % (2**32))
+    # Set unique random seed based on video path and current time
+    seed = hash(video_path + str(time.time())) % (2**32)
+    torch.manual_seed(seed)
     if device == "cuda":
-        torch.cuda.manual_seed(int(time.time() * 1000000) % (2**32))
+        torch.cuda.manual_seed_all(seed)
     
     start_time = time.time()
-    outputs = model.generate(
-        **inputs,
-        max_new_tokens=max_new_tokens,
-        temperature=0.1,
-        do_sample=True,
-        pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-    )
+    
+    # Generate with no caching to prevent state reuse
+    with torch.no_grad():
+        outputs = model.generate(
+            input_ids=inputs.input_ids,
+            attention_mask=inputs.attention_mask,
+            pixel_values=inputs.pixel_values if 'pixel_values' in inputs else None,
+            max_new_tokens=max_new_tokens,
+            temperature=0.7,  # Increase temperature for more variation
+            top_p=0.9,
+            top_k=50,
+            do_sample=True,
+            use_cache=False,  # Disable KV cache
+            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+    
     end_time = time.time()
     generation_time = end_time - start_time
     
@@ -150,10 +171,11 @@ def run_inference(
     generated_token_count = len(new_tokens)
     tokens_per_second = generated_token_count / generation_time if generation_time > 0 else 0
     
-    # Clear memory after inference
-    del inputs, outputs, new_tokens
+    # Aggressively clear memory after inference
+    del inputs, outputs, new_tokens, frames, messages
     if device == "cuda":
         torch.cuda.empty_cache()
+        torch.cuda.synchronize()
     
     return response_text, {
         'generated_tokens': generated_token_count,
