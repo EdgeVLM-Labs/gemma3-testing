@@ -128,10 +128,16 @@ def run_inference(
     # FORCE clear GPU cache and model state before processing
     if device == "cuda":
         torch.cuda.empty_cache()
+        torch.cuda.synchronize()
     
-    # Clear model's past_key_values cache if it exists
+    # Reset model to ensure clean state
+    model.eval()
+    
+    # Clear any cached states in the model
     if hasattr(model, 'past_key_values'):
         model.past_key_values = None
+    if hasattr(model, '_past'):
+        model._past = None
     
     # Extract frames
     frames = extract_frames(video_path, num_frames=num_frames)
@@ -158,19 +164,25 @@ def run_inference(
     
     input_token_count = inputs['input_ids'].shape[1]
     
-    # Generate with completely fresh state
+    # Generate with completely fresh state and proper sampling
     with torch.inference_mode():
+        # Set random seed differently for each call to ensure variation
+        torch.manual_seed(int(time.time() * 1000000) % (2**32))
+        if device == "cuda":
+            torch.cuda.manual_seed_all(int(time.time() * 1000000) % (2**32))
+        
         start_time = time.time()
         output_ids = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
-            temperature=0.7,  # Increased for more variation
-            top_p=0.9,        # Add nucleus sampling
-            top_k=50,         # Add top-k sampling
+            temperature=0.7,
+            top_p=0.9,
+            top_k=50,
             do_sample=True,
-            use_cache=True,   # Enable cache for generation efficiency
-            past_key_values=None,  # Explicitly pass None to reset
+            use_cache=False,  # Disable cache to prevent state leakage
             pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            repetition_penalty=1.1,  # Prevent repetitive outputs
         )
         end_time = time.time()
         generation_time = end_time - start_time
@@ -186,8 +198,10 @@ def run_inference(
     # CRITICAL: Clear everything after generation
     del inputs
     del output_ids
+    del new_tokens
     if device == "cuda":
         torch.cuda.empty_cache()
+        torch.cuda.synchronize()
     
     return response_text, {
         'generated_tokens': generated_token_count,
