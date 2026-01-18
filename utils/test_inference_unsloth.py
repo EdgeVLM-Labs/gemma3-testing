@@ -32,7 +32,7 @@ import cv2
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
-from unsloth import FastModel
+from unsloth import FastVisionModel
 from transformers import TextStreamer
 
 
@@ -78,46 +78,32 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
 
 
 def load_model(model_path: str, device: str = "cuda"):
-    """Load Gemma-3N model using Unsloth FastModel."""
+    """Load Gemma-3N model using Unsloth FastVisionModel."""
     print(f"📦 Loading model from: {model_path}")
     
-    # Check if this is a local fine-tuned model
-    is_local_model = os.path.exists(model_path)
-    
-    if is_local_model:
-        print(f"🔍 Loading local fine-tuned model: {model_path}")
-        try:
-            # Try with FastModel first
-            model, tokenizer = FastModel.from_pretrained(
-                model_name=model_path,
-                dtype=None,
-                max_seq_length=2048,
-                load_in_4bit=False,
-                trust_remote_code=True,
-            )
-            print("✅ Loaded with FastModel")
-        except Exception as e:
-            print(f"⚠ FastModel failed, using AutoModel: {e}")
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-            tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-            model = AutoModelForCausalLM.from_pretrained(
-                model_path,
-                torch_dtype=torch.bfloat16,
-                device_map="auto",
-                trust_remote_code=True,
-            )
-            print("✅ Loaded with AutoModel")
-    else:
-        # Load from HuggingFace
-        print(f"📥 Loading from HuggingFace: {model_path}")
-        model, tokenizer = FastModel.from_pretrained(
+    # Always use FastVisionModel for proper vision support
+    try:
+        model, tokenizer = FastVisionModel.from_pretrained(
             model_name=model_path,
-            dtype=None,
+            dtype=None,  # Auto detection
             max_seq_length=2048,
             load_in_4bit=False,
             trust_remote_code=True,
         )
-        print("✅ Loaded from HuggingFace")
+        FastVisionModel.for_inference(model)  # Optimize for inference
+        print("✅ Loaded with FastVisionModel")
+    except Exception as e:
+        print(f"❌ FastVisionModel failed: {e}")
+        print("⚠ Trying AutoModel as fallback...")
+        from transformers import AutoModelForCausalLM, AutoProcessor
+        tokenizer = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+        print("✅ Loaded with AutoModel")
     
     model.to(device)
     model.eval()
@@ -133,7 +119,7 @@ def run_inference(
     device: str = "cuda",
     max_new_tokens: int = 256,
     num_frames: int = 8,
-    temperature: float = 0.7,
+    temperature: float = 0.1,
     top_p: float = 0.9,
     debug: bool = False
 ):
@@ -143,17 +129,15 @@ def run_inference(
     
     if debug:
         print(f"🎞️ Extracted {len(frames)} frames from {video_path}")
+        print(f"📐 Frame sizes: {[f.size for f in frames[:3]]}...")  # Show first 3
     
-    # Enhanced prompt to encourage diverse responses
-    enhanced_prompt = f"{prompt}\n\nCarefully analyze this specific video and provide detailed, accurate feedback based on what you observe."
-    
-    # Prepare messages with actual image frames
+    # Prepare messages with actual image frames - EXACT format from working example
     messages = [
         {
             "role": "user",
             "content": [
                 *[{"type": "image", "image": frame} for frame in frames],
-                {"type": "text", "text": enhanced_prompt}
+                {"type": "text", "text": prompt}  # Use original prompt without modification
             ]
         }
     ]
@@ -168,25 +152,22 @@ def run_inference(
     ).to(device)
     
     if debug:
-        print(f"📊 Input IDs shape: {inputs.input_ids.shape}")
-        print(f"🖼️ Number of image frames: {len([c for c in messages[0]['content'] if c['type'] == 'image'])}")
+        print(f"📊 Input shape: input_ids={inputs.input_ids.shape}")
+        if 'pixel_values' in inputs:
+            print(f"🖼️ Pixel values shape: {inputs.pixel_values.shape}")
+        else:
+            print(f"⚠️ WARNING: No pixel_values in inputs! Vision encoding may have failed.")
     
     start_time = time.time()
     
-    # Generate with improved parameters for diversity
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,  # Increased from 0.1
-            do_sample=True,
-            top_p=top_p,  # Nucleus sampling
-            top_k=50,  # Top-k sampling
-            repetition_penalty=1.1,  # Penalize repetition
-            use_cache=True,
-            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
+    # Generate - simple and clean like working example
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        do_sample=True,
+        pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+    )
     
     end_time = time.time()
     generation_time = end_time - start_time
@@ -196,11 +177,11 @@ def run_inference(
     new_tokens = outputs[0][input_length:]
     response_text = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
     
+    if debug:
+        print(f"💬 Generated: {response_text[:200]}...")  # First 200 chars
+    
     generated_token_count = len(new_tokens)
     tokens_per_second = generated_token_count / generation_time if generation_time > 0 else 0
-    
-    # Clean up to prevent memory accumulation
-    del inputs, outputs, frames
     
     return response_text, {
         'generated_tokens': generated_token_count,
@@ -223,7 +204,7 @@ def warmup_gpu(model, tokenizer, test_video: str, device: str = "cuda", max_new_
             "Test prompt", 
             device, 
             max_new_tokens=32,  # Short warmup
-            temperature=0.7,
+            temperature=0.1,
             top_p=0.9
         )
         # Clear cache after warmup
@@ -244,7 +225,7 @@ def main():
     parser.add_argument("--device", type=str, default="cuda", help="Device to use (cuda/cpu)")
     parser.add_argument("--max_new_tokens", type=int, default=256, help="Maximum number of new tokens")
     parser.add_argument("--num_frames", type=int, default=8, help="Number of frames to extract per video")
-    parser.add_argument("--temperature", type=float, default=0.7, help="Sampling temperature (higher = more diverse)")
+    parser.add_argument("--temperature", type=float, default=0.1, help="Sampling temperature (lower = more focused)")
     parser.add_argument("--top_p", type=float, default=0.9, help="Nucleus sampling parameter")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of samples for testing")
     parser.add_argument("--debug", action="store_true", help="Enable debug output")
@@ -259,7 +240,7 @@ def main():
         args.output = str(output_dir / "test_predictions.json")
     
     print("=" * 60)
-    print("🎬 Gemma-3N Test Inference (Unsloth) - FIXED")
+    print("🎬 Gemma-3N Test Inference (Unsloth) - Vision Fixed")
     print("=" * 60)
     print(f"Model:           {args.model_path}")
     print(f"Test JSON:       {args.test_json}")
