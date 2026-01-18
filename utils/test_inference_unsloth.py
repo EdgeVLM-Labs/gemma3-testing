@@ -99,6 +99,10 @@ def run_inference(
     num_frames: int = 8
 ):
     """Run inference on a single video."""
+    # Clear cache before processing to prevent state carryover
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    
     # Extract frames
     frames = extract_frames(video_path, num_frames=num_frames)
     
@@ -122,13 +126,18 @@ def run_inference(
         return_tensors="pt",
     ).to(device)
     
-    # Generate
+    # Generate with fresh random seed for each video
+    torch.manual_seed(int(time.time() * 1000000) % (2**32))
+    if device == "cuda":
+        torch.cuda.manual_seed(int(time.time() * 1000000) % (2**32))
+    
     start_time = time.time()
     outputs = model.generate(
         **inputs,
         max_new_tokens=max_new_tokens,
         temperature=0.1,
         do_sample=True,
+        pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
     )
     end_time = time.time()
     generation_time = end_time - start_time
@@ -140,6 +149,11 @@ def run_inference(
     
     generated_token_count = len(new_tokens)
     tokens_per_second = generated_token_count / generation_time if generation_time > 0 else 0
+    
+    # Clear memory after inference
+    del inputs, outputs, new_tokens
+    if device == "cuda":
+        torch.cuda.empty_cache()
     
     return response_text, {
         'generated_tokens': generated_token_count,
