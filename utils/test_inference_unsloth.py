@@ -18,6 +18,7 @@ import json
 import time
 from pathlib import Path
 from typing import List
+import gc
 
 os.environ['PYTHONWARNINGS'] = 'ignore'
 warnings.filterwarnings("ignore")
@@ -48,15 +49,16 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
         cap.release()
         raise ValueError(f"Video has no frames: {video_path}")
     
-    # Calculate step size for frame extraction
-    step = total_frames // num_frames
+    # Calculate step size for frame extraction - ensure at least 1
+    step = max(1, total_frames // num_frames)
     frames = []
 
     for i in range(num_frames):
-        frame_idx = i * step
+        frame_idx = min(i * step, total_frames - 1)  # Prevent overflow
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
         if not ret:
+            print(f"⚠ Warning: Could not read frame {frame_idx} from {video_path}")
             break
         
         # Convert BGR (OpenCV) to RGB (PIL)
@@ -65,10 +67,14 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
 
     cap.release()
     
-    if len(frames) != num_frames:
-        raise ValueError(f"Expected {num_frames} frames, got {len(frames)}")
+    if len(frames) == 0:
+        raise ValueError(f"No frames extracted from {video_path}")
     
-    return frames
+    # Pad with duplicate last frame if needed
+    while len(frames) < num_frames:
+        frames.append(frames[-1].copy())
+    
+    return frames[:num_frames]  # Ensure exactly num_frames returned
 
 
 def load_model(model_path: str, device: str = "cuda"):
@@ -126,11 +132,20 @@ def run_inference(
     prompt: str,
     device: str = "cuda",
     max_new_tokens: int = 256,
-    num_frames: int = 8
+    num_frames: int = 8,
+    temperature: float = 0.7,
+    top_p: float = 0.9,
+    debug: bool = False
 ):
     """Run inference on a single video."""
     # Extract frames fresh for each video
     frames = extract_frames(video_path, num_frames=num_frames)
+    
+    if debug:
+        print(f"🎞️ Extracted {len(frames)} frames from {video_path}")
+    
+    # Enhanced prompt to encourage diverse responses
+    enhanced_prompt = f"{prompt}\n\nCarefully analyze this specific video and provide detailed, accurate feedback based on what you observe."
     
     # Prepare messages with actual image frames
     messages = [
@@ -138,7 +153,7 @@ def run_inference(
             "role": "user",
             "content": [
                 *[{"type": "image", "image": frame} for frame in frames],
-                {"type": "text", "text": prompt}
+                {"type": "text", "text": enhanced_prompt}
             ]
         }
     ]
@@ -152,18 +167,26 @@ def run_inference(
         return_tensors="pt",
     ).to(device)
     
+    if debug:
+        print(f"📊 Input IDs shape: {inputs.input_ids.shape}")
+        print(f"🖼️ Number of image frames: {len([c for c in messages[0]['content'] if c['type'] == 'image'])}")
+    
     start_time = time.time()
     
-    # Generate without caching between calls
-    outputs = model.generate(
-        **inputs,
-        max_new_tokens=max_new_tokens,
-        temperature=0.1,
-        do_sample=True,
-        use_cache=True,  # Use cache within generation but not between calls
-        pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-    )
+    # Generate with improved parameters for diversity
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,  # Increased from 0.1
+            do_sample=True,
+            top_p=top_p,  # Nucleus sampling
+            top_k=50,  # Top-k sampling
+            repetition_penalty=1.1,  # Penalize repetition
+            use_cache=True,
+            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
     
     end_time = time.time()
     generation_time = end_time - start_time
@@ -175,6 +198,9 @@ def run_inference(
     
     generated_token_count = len(new_tokens)
     tokens_per_second = generated_token_count / generation_time if generation_time > 0 else 0
+    
+    # Clean up to prevent memory accumulation
+    del inputs, outputs, frames
     
     return response_text, {
         'generated_tokens': generated_token_count,
@@ -196,8 +222,14 @@ def warmup_gpu(model, tokenizer, test_video: str, device: str = "cuda", max_new_
             test_video, 
             "Test prompt", 
             device, 
-            max_new_tokens=32  # Short warmup
+            max_new_tokens=32,  # Short warmup
+            temperature=0.7,
+            top_p=0.9
         )
+        # Clear cache after warmup
+        if device == "cuda":
+            torch.cuda.empty_cache()
+        gc.collect()
         print("✓ GPU warmup complete")
     except Exception as e:
         print(f"⚠ Warmup warning: {e}")
@@ -212,7 +244,10 @@ def main():
     parser.add_argument("--device", type=str, default="cuda", help="Device to use (cuda/cpu)")
     parser.add_argument("--max_new_tokens", type=int, default=256, help="Maximum number of new tokens")
     parser.add_argument("--num_frames", type=int, default=8, help="Number of frames to extract per video")
+    parser.add_argument("--temperature", type=float, default=0.7, help="Sampling temperature (higher = more diverse)")
+    parser.add_argument("--top_p", type=float, default=0.9, help="Nucleus sampling parameter")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of samples for testing")
+    parser.add_argument("--debug", action="store_true", help="Enable debug output")
 
     args = parser.parse_args()
 
@@ -224,7 +259,7 @@ def main():
         args.output = str(output_dir / "test_predictions.json")
     
     print("=" * 60)
-    print("🎬 Gemma-3N Test Inference (Unsloth)")
+    print("🎬 Gemma-3N Test Inference (Unsloth) - FIXED")
     print("=" * 60)
     print(f"Model:           {args.model_path}")
     print(f"Test JSON:       {args.test_json}")
@@ -232,9 +267,13 @@ def main():
     print(f"Output:          {args.output}")
     print(f"Device:          {args.device}")
     print(f"Max tokens:      {args.max_new_tokens}")
+    print(f"Temperature:     {args.temperature}")
+    print(f"Top-p:           {args.top_p}")
     print(f"Frames/video:    {args.num_frames}")
     if args.limit:
         print(f"Sample limit:    {args.limit}")
+    if args.debug:
+        print(f"Debug mode:      ON")
     print("=" * 60)
 
     # Load model
@@ -260,7 +299,7 @@ def main():
     throughput_stats = []
     print("\n🎬 Running inference...")
 
-    for item in tqdm(test_data, desc="Processing videos"):
+    for idx, item in enumerate(tqdm(test_data, desc="Processing videos")):
         video_rel_path = item['video']
         # Try the full relative path first
         video_path = Path(args.data_path) / video_rel_path
@@ -283,7 +322,10 @@ def main():
                 prompt,
                 args.device,
                 args.max_new_tokens,
-                args.num_frames
+                args.num_frames,
+                args.temperature,
+                args.top_p,
+                args.debug and idx < 3  # Debug first 3 samples only
             )
             throughput_stats.append(metrics['tokens_per_second'])
 
@@ -297,6 +339,21 @@ def main():
                 "tokens_per_second": round(metrics['tokens_per_second'], 2),
                 "status": "success"
             })
+            
+            if args.debug and idx < 3:
+                print(f"\n{'='*60}")
+                print(f"Sample {idx + 1}:")
+                print(f"Video: {video_rel_path}")
+                print(f"Prompt: {prompt}")
+                print(f"Ground Truth: {ground_truth}")
+                print(f"Prediction: {prediction}")
+                print(f"{'='*60}\n")
+            
+            # Clear GPU cache periodically
+            if args.device == "cuda" and (idx + 1) % 10 == 0:
+                torch.cuda.empty_cache()
+                gc.collect()
+                
         except Exception as e:
             results.append({
                 "video_path": video_rel_path,
