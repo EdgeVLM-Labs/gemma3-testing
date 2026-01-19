@@ -9,8 +9,20 @@ echo "🔧 Setting up Gemma-3N fine-tuning environment..."
 echo ""
 
 # ----------------------------
+# System dependencies (from RUNPOD_QUICKSTART.md)
+# ----------------------------
+echo "📦 Installing system dependencies..."
+if command -v apt-get &> /dev/null; then
+    apt-get update -qq 2>/dev/null || true
+    apt-get install -y wget git build-essential -qq 2>/dev/null || echo "⚠️  Some system packages may need manual installation"
+else
+    echo "⚠️  apt-get not found, skipping system dependencies"
+fi
+
+# ----------------------------
 # Conda bootstrap
 # ----------------------------
+CONDA_INSTALLED=false
 if ! command -v conda &> /dev/null; then
     echo "📦 Installing Miniconda..."
     cd /tmp
@@ -19,8 +31,8 @@ if ! command -v conda &> /dev/null; then
     export PATH="/root/miniconda/bin:$PATH"
     eval "$(/root/miniconda/bin/conda shell.bash hook)"
     conda init bash
-    echo "⚠️ Restart shell and re-run setup.sh"
-    exit 0
+    CONDA_INSTALLED=true
+    echo "✅ Miniconda installed"
 else
     echo "✅ Conda already installed"
     eval "$(conda shell.bash hook)"

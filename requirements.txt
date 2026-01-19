@@ -85,3 +85,5 @@ mamba-ssm==1.2.0
 
 # Typing extensions (for compatibility)
 typing_extensions
+
+evaluate>=0.3.0

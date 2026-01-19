@@ -576,11 +576,13 @@ model, processor = FastVisionModel.from_pretrained(
 
 ---
 
-## �🔮 Inference
+## 🔮 Inference
 
-### Single Video Analysis
+### Method 1: Unsloth-based Inference (Fine-tuned Models)
 
-Use the dedicated inference script for analyzing individual videos:
+Best for models fine-tuned with Unsloth:
+
+#### Single Video Analysis
 
 ```bash
 # With fine-tuned model
@@ -621,9 +623,7 @@ tracking over the toes consistently.
 ================================================================================
 ```
 
-### Batch Inference (Multiple Videos)
-
-For processing multiple videos at once:
+#### Batch Inference (Multiple Videos)
 
 ```bash
 # Create test dataset from your videos
@@ -645,10 +645,6 @@ bash scripts/run_inference.sh \
   --num_frames 8
 ```
 
-**Output files:**
-- Predictions JSON: `results/test_inference_<model_name>/test_predictions.json`
-- Evaluation Report: `results/test_inference_<model_name>/test_evaluation_report.xlsx`
-
 **Direct Python script:**
 ```bash
 python utils/test_inference_unsloth.py \
@@ -660,6 +656,95 @@ python utils/test_inference_unsloth.py \
     --max_new_tokens 256 \
     --num_frames 8
 ```
+
+---
+
+### Method 2: Transformers-based Inference (Google Gemma-3 Models)
+
+For using official Google Gemma-3 models with native transformers library. This method follows Google's official video inference approach and is ideal for:
+- Using pretrained Google Gemma-3 models (`google/gemma-3-4b-it`, `google/gemma-3-12b-it`, etc.)
+- Analyzing physiotherapy exercise videos from QVED dataset
+- Getting baseline results before fine-tuning
+
+**Key Features:**
+- Native transformers implementation (no Unsloth dependency)
+- Frame-by-frame video analysis with timestamps
+- Specialized physiotherapy assistant prompting
+- Compatible with existing evaluation pipeline
+
+#### Batch Inference with Transformers
+
+```bash
+# Using default Google Gemma-3 4B model
+bash scripts/run_inference_transformers.sh \
+  --test_json dataset/qved_test.json \
+  --data_path videos \
+  --limit 10
+
+# Using larger model for better quality
+bash scripts/run_inference_transformers.sh \
+  --hf_repo google/gemma-3-12b-it \
+  --test_json dataset/qved_test.json \
+  --data_path sample_videos \
+  --num_frames 10 \
+  --max_new_tokens 256
+
+# Custom configuration
+bash scripts/run_inference_transformers.sh \
+  --hf_repo google/gemma-3-4b-it \
+  --test_json dataset/qved_test.json \
+  --data_path videos \
+  --output_dir results/transformers_inference \
+  --device cuda \
+  --max_new_tokens 512 \
+  --num_frames 8 \
+  --limit 50
+```
+
+**Direct Python script:**
+```bash
+python utils/test_inference_transformers.py \
+    --model_path google/gemma-3-4b-it \
+    --test_json dataset/qved_test.json \
+    --data_path videos \
+    --output results/predictions.json \
+    --device cuda \
+    --max_new_tokens 256 \
+    --num_frames 8 \
+    --limit 50
+```
+
+**Available Gemma-3 Models:**
+- `google/gemma-3-1b-it` - 1B parameters, text-only, 32k context (fastest)
+- `google/gemma-3-4b-it` - 4B parameters, vision+text, 128k context (recommended)
+- `google/gemma-3-12b-it` - 12B parameters, vision+text, 128k context (best quality)
+- `google/gemma-3-27b-it` - 27B parameters, vision+text, 128k context (highest quality)
+
+**Output files:**
+```
+results/test_inference_transformers_<model_name>/
+├── test_predictions.json          # Predictions with ground truth
+└── test_evaluation_report.xlsx    # Excel report with metrics
+```
+
+**System Prompt for Physiotherapy:**
+The transformers inference uses a specialized system prompt optimized for exercise analysis:
+```
+"You are an expert physiotherapy assistant specialized in analyzing exercise videos. 
+Provide clear, concise answers about exercise form, technique, and recommendations."
+```
+
+**Processing Details:**
+- Frames are extracted evenly across video duration
+- Each frame is saved temporarily with timestamp
+- Frames are passed to model with temporal context
+- Automatic cleanup after inference
+
+---
+
+### Inference Output Files
+
+Both methods generate:
 
 ---
 
