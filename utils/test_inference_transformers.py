@@ -293,7 +293,7 @@ def main():
                 prediction = "[ERROR: Failed to extract frames from video]"
         
         predictions.append({
-            "video": video_path,
+            "video_path": video_path,
             "question": question,
             "ground_truth": ground_truth,
             "prediction": prediction
