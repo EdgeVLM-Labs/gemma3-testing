@@ -17,7 +17,7 @@ git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
 git checkout gemma-1
 
-# 2. Run automated setup
+# 2. Run automated setup (installs conda, packages, and prompts for auth)
 bash setup.sh
 
 # If setup installs conda for first time, restart shell and run again:
@@ -42,7 +42,7 @@ bash scripts/run_inference.sh \
 apt-get update
 apt-get install -y wget git build-essential
 
-# 1. Clone and setup environment
+# 1. Clone and setup environment (includes auth prompts)
 git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
 bash setup.sh
@@ -55,15 +55,16 @@ bash setup.sh  # Run again
 # 2. Activate environment (always needed in new terminals)
 conda activate gemma3n
 
-# 3. Login to services
-wandb login
-huggingface-cli login
+# Note: setup.sh will prompt you to login to HuggingFace and WandB
+# Or login manually anytime with:
+#   huggingface-cli login
+#   wandb login
 
-# 4. Prepare dataset
+# 3. Prepare dataset
 python dataset.py download --max-per-class 5
 python dataset.py prepare
 
-# 5. Fine-tune model (uses unsloth/gemma-3n-E4B-it)
+# 4. Fine-tune model (uses unsloth/gemma-3n-E4B-it)
 bash scripts/finetune_gemma3n_unsloth.sh
 
 # 6. Run inference
@@ -160,28 +161,7 @@ conda activate gemma3n
 - Training: `wandb` (for tracking)
 - Evaluation: `nltk`, `rouge-score`, `sacrebleu`, `openpyxl`, `sentence-transformers`
 
-### 5. Authenticate Services
-
-After setup completes, login to required services:
-
-```bash
-# HuggingFace (required - for models and datasets)
-huggingface-cli login
-# Paste your token from: https://huggingface.co/settings/tokens
-
-# Weights & Biases (required - for training tracking)
-wandb login
-# Paste your API key from: https://wandb.ai/authorize
-```
-
-**Note:** The setup script will prompt you for these logins at the end.
-
-### 6. Verify Installation
-wandb login
-# Paste your API key from: https://wandb.ai/authorize
-```
-
-### 6. Verify Installation
+### 5. Verify Installation
 
 Check that everything is working correctly:
 
@@ -209,6 +189,12 @@ PyTorch: 2.x.x+cu118
 CUDA available: True
 ✅ Unsloth FastVisionModel ready
 Transformers: 4.56.2
+```
+
+**Note:** If you skipped authentication during setup, login now:
+```bash
+huggingface-cli login  # Get token from https://huggingface.co/settings/tokens
+wandb login            # Get key from https://wandb.ai/authorize
 ```
 
 ---

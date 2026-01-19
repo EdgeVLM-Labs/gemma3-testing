@@ -99,15 +99,29 @@ echo "🔥 Installing PyTorch with CUDA 12.1 (required for building mamba-ssm)..
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 --quiet
 
 # ----------------------------
-# Install requirements
+# Determine script directory
+# ----------------------------
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
+# ----------------------------
+# Install requirements (excluding mamba-ssm)
 # ----------------------------
 if [ ! -f requirements.txt ]; then
-    echo "❌ requirements.txt not found"
+    echo "❌ requirements.txt not found in $SCRIPT_DIR"
+    echo "Current directory: $(pwd)"
+    echo "Listing files:"
+    ls -la
     exit 1
 fi
 
-echo "📦 Installing requirements..."
-pip install -r requirements.txt --quiet || true
+echo "📦 Installing requirements (excluding mamba-ssm)..."
+# Install everything except mamba-ssm first
+grep -v "mamba-ssm" requirements.txt > /tmp/requirements_temp.txt || true
+pip install -r /tmp/requirements_temp.txt --quiet || {
+    echo "⚠️  Some packages failed to install, continuing..."
+}
+rm -f /tmp/requirements_temp.txt
 
 # ----------------------------
 # Fix mamba-ssm installation (requires torch during build)
@@ -115,8 +129,11 @@ pip install -r requirements.txt --quiet || true
 echo "🐍 Installing mamba-ssm with proper build flags..."
 pip uninstall -y mamba-ssm --quiet 2>/dev/null || true
 pip cache purge --quiet 2>/dev/null || true
-pip install mamba-ssm --no-cache-dir --no-build-isolation --quiet || {
-    echo "⚠️  mamba-ssm installation failed. Run 'bash fix_torch_int1.sh' to fix."
+
+# Install with --no-build-isolation so torch is visible during build
+pip install mamba-ssm==1.2.0 --no-cache-dir --no-build-isolation --quiet 2>&1 | grep -v "WARNING: Running pip as the 'root'" || {
+    echo "⚠️  mamba-ssm installation failed. This is optional - continuing without it."
+    echo "    If you need mamba-ssm, run: bash fix_torch_int1.sh"
 }
 
 # ----------------------------
@@ -140,10 +157,12 @@ nltk.download("punkt", quiet=True)
 EOF
 
 # ----------------------------
-# Unsloth stack
+# Unsloth stack (ensure compatibility)
 # ----------------------------
 echo "🦥 Installing Unsloth stack..."
+pip uninstall -y unsloth unsloth_zoo peft --quiet 2>/dev/null || true
 pip install --upgrade unsloth unsloth_zoo timm --quiet
+pip install --upgrade packaging ninja einops xformers peft accelerate bitsandbytes --quiet
 pip install transformers==4.56.2 --quiet
 pip install --no-deps trl==0.22.2 --quiet
 
@@ -160,11 +179,21 @@ import torch, transformers
 print("PyTorch:", torch.__version__)
 print("CUDA available:", torch.cuda.is_available())
 print("Transformers:", transformers.__version__)
+
+# Check mamba-ssm (optional)
+try:
+    import mamba_ssm
+    print("✅ Mamba-SSM OK")
+except Exception as e:
+    print("⚠️  Mamba-SSM not available (optional)")
+
+# Check Unsloth
 try:
     from unsloth import FastVisionModel
     print("✅ Unsloth OK")
 except Exception as e:
     print("❌ Unsloth error:", e)
+    print("   Run: bash fix_unsloth.sh")
 EOF
 
 # ----------------------------
@@ -177,6 +206,52 @@ echo "=========================================="
 echo ""
 echo "Activate with:"
 echo "  conda activate gemma3n"
+echo ""
+
+# ----------------------------
+# Service Authentication
+# ----------------------------
+echo "=========================================="
+echo "🔑 Service Authentication Required"
+echo "=========================================="
+echo ""
+echo "To use this project, you need to authenticate with:"
+echo "  1. HuggingFace (for models and datasets)"
+echo "  2. Weights & Biases (for training tracking)"
+echo ""
+read -p "Do you want to login now? (y/n): " -n 1 -r
+echo ""
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "📦 Installing HuggingFace CLI..."
+    pip install -U huggingface_hub --quiet
+    
+    echo ""
+    echo "🤗 HuggingFace Login"
+    echo "Get your token from: https://huggingface.co/settings/tokens"
+    echo ""
+    huggingface-cli login
+    
+    echo ""
+    echo "📊 Weights & Biases Login"
+    echo "Get your API key from: https://wandb.ai/authorize"
+    echo ""
+    wandb login
+    
+    echo ""
+    echo "✅ Authentication complete!"
+else
+    echo ""
+    echo "⚠️  You can login later by running:"
+    echo "    huggingface-cli login"
+    echo "    wandb login"
+fi
+
+echo ""
+echo "=========================================="
+echo "🚀 Ready to Start"
+echo "=========================================="
 echo ""
 echo "Start fine-tuning:"
 echo "  bash scripts/finetune_gemma3n_unsloth.sh"
