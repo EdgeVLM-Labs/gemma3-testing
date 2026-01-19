@@ -16,7 +16,7 @@ import cv2
 import torch
 from PIL import Image
 from tqdm import tqdm
-from transformers import Gemma3Processor, Gemma3ForConditionalGeneration
+from transformers.models.gemma3 import Gemma3Processor, Gemma3ForConditionalGeneration
 
 warnings.filterwarnings("ignore")
 
