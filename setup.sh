@@ -93,10 +93,12 @@ echo "📦 Upgrading pip..."
 python -m pip install --upgrade pip --quiet
 
 # ----------------------------
-# Install PyTorch first (required by mamba-ssm)
+# Install PyTorch stack first (all components together)
 # ----------------------------
-echo "🔥 Installing PyTorch with CUDA 12.1 (required for building mamba-ssm)..."
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 --quiet
+echo "🔥 Installing PyTorch stack with CUDA 12.1..."
+pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121 --quiet
+echo "⚡ Installing compatible xformers..."
+pip install xformers==0.0.28.post3 --quiet
 
 # ----------------------------
 # Determine script directory
@@ -105,7 +107,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
 # ----------------------------
-# Install requirements (excluding mamba-ssm)
+# Install requirements (excluding mamba-ssm and xformers)
 # ----------------------------
 if [ ! -f requirements.txt ]; then
     echo "❌ requirements.txt not found in $SCRIPT_DIR"
@@ -115,26 +117,19 @@ if [ ! -f requirements.txt ]; then
     exit 1
 fi
 
-echo "📦 Installing requirements (excluding mamba-ssm)..."
-# Install everything except mamba-ssm first
-grep -v "mamba-ssm" requirements.txt > /tmp/requirements_temp.txt || true
+echo "📦 Installing requirements (excluding mamba-ssm and xformers)..."
+# Install everything except mamba-ssm and xformers (already installed)
+grep -v -e "mamba-ssm" -e "xformers" requirements.txt > /tmp/requirements_temp.txt || true
 pip install -r /tmp/requirements_temp.txt --quiet || {
     echo "⚠️  Some packages failed to install, continuing..."
 }
 rm -f /tmp/requirements_temp.txt
 
 # ----------------------------
-# Fix mamba-ssm installation (requires torch during build)
+# Skip mamba-ssm installation (optional and causes build issues)
 # ----------------------------
-echo "🐍 Installing mamba-ssm with proper build flags..."
-pip uninstall -y mamba-ssm --quiet 2>/dev/null || true
-pip cache purge --quiet 2>/dev/null || true
-
-# Install with --no-build-isolation so torch is visible during build
-pip install mamba-ssm==1.2.0 --no-cache-dir --no-build-isolation --quiet 2>&1 | grep -v "WARNING: Running pip as the 'root'" || {
-    echo "⚠️  mamba-ssm installation failed. This is optional - continuing without it."
-    echo "    If you need mamba-ssm, run: bash fix_torch_int1.sh"
-}
+echo "⚠️  Skipping mamba-ssm (optional - causes build issues on some systems)"
+echo "    If you need VideoMamba support, install manually after setup completes"
 
 # ----------------------------
 # Core dependencies
@@ -157,12 +152,12 @@ nltk.download("punkt", quiet=True)
 EOF
 
 # ----------------------------
-# Unsloth stack (ensure compatibility)
+# Unsloth stack (ensure compatibility with PyTorch 2.5.1)
 # ----------------------------
 echo "🦥 Installing Unsloth stack..."
 pip uninstall -y unsloth unsloth_zoo peft --quiet 2>/dev/null || true
 pip install --upgrade unsloth unsloth_zoo timm --quiet
-pip install --upgrade packaging ninja einops xformers peft accelerate bitsandbytes --quiet
+pip install --upgrade packaging ninja einops peft accelerate bitsandbytes --quiet
 pip install transformers==4.56.2 --quiet
 pip install --no-deps trl==0.22.2 --quiet
 
@@ -178,14 +173,23 @@ python - <<EOF
 import torch, transformers
 print("PyTorch:", torch.__version__)
 print("CUDA available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("CUDA version:", torch.version.cuda)
 print("Transformers:", transformers.__version__)
+
+# Check xformers
+try:
+    import xformers
+    print("✅ xformers:", xformers.__version__)
+except Exception as e:
+    print("⚠️  xformers not available")
 
 # Check mamba-ssm (optional)
 try:
     import mamba_ssm
-    print("✅ Mamba-SSM OK")
+    print("✅ Mamba-SSM OK (optional)")
 except Exception as e:
-    print("⚠️  Mamba-SSM not available (optional)")
+    print("⚠️  Mamba-SSM not available (optional - not needed for basic usage)")
 
 # Check Unsloth
 try:
@@ -224,8 +228,9 @@ echo ""
 
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo ""
-    echo "📦 Installing HuggingFace CLI..."
-    pip install -U huggingface_hub --quiet
+    echo "📦 Ensuring HuggingFace CLI compatibility..."
+    # Install with version constraint to match transformers 4.56.2
+    pip install 'huggingface_hub>=0.34.0,<1.0' --quiet
     
     echo ""
     echo "🤗 HuggingFace Login"
