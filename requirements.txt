@@ -10,6 +10,8 @@ accelerate>=0.34.1
 bitsandbytes>=0.45.5
 
 # Transformers and tokenizers
+# NOTE: transformers>=4.49.0 required for Gemma-3 vision support
+# For Google's official Gemma-3 models, use: pip install git+https://github.com/huggingface/transformers@v4.49.0-Gemma-3
 transformers==4.56.2
 tokenizers
 sentencepiece
