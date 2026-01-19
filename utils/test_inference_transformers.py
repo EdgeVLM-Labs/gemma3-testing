@@ -271,9 +271,18 @@ def main():
     frames_temp_dir = os.path.join(os.path.dirname(args.output), "temp_frames")
     
     for idx, sample in enumerate(tqdm(test_data, desc="Processing videos")):
+        # Handle both dataset formats
         video_path = sample.get("video", "")
-        question = sample.get("question", "")
-        ground_truth = sample.get("answer", "")
+        
+        # Check if using conversations format (like Unsloth)
+        if "conversations" in sample:
+            conversations = sample["conversations"]
+            question = conversations[0].get("value", "")
+            ground_truth = conversations[1].get("value", "")
+        else:
+            # Flat format
+            question = sample.get("question", "")
+            ground_truth = sample.get("answer", "")
         
         # Construct full path
         full_path = os.path.join(args.data_path, video_path)
