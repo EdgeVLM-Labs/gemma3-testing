@@ -1,35 +1,34 @@
 #!/bin/bash
 
-# Gemma-3N QVED Inference and Evaluation Report Generator (Transformers)
-# This script runs inference on QVED physiotherapy exercise videos using native transformers
+# Gemma-3N Test Inference and Evaluation Report Generator (Unsloth)
+# This script runs inference on the test set and generates an evaluation report
 #
 # USAGE EXAMPLES:
 #
-# 1. Quick test with default model (google/gemma-3-4b-it):
-#    bash scripts/run_inference_transformers.sh --test_json dataset/qved_test.json --data_path test_videos --limit 10
+# 1. Quick test with HuggingFace model:
+#    bash scripts/run_inference_unsloth.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --data_path videos --limit 10
 #
-# 2. Using larger model:
-#    bash scripts/run_inference_transformers.sh --hf_repo google/gemma-3-12b-it --test_json dataset/qved_test.json --data_path test_videos
+# 2. Using local fine-tuned model:
+#    bash scripts/run_inference_unsloth.sh --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit --test_json dataset/qved_test.json --data_path videos
 #
 # 3. Full inference with custom settings:
-#    bash scripts/run_inference_transformers.sh \
-#      --hf_repo google/gemma-3-4b-it \
+#    bash scripts/run_inference_unsloth.sh \
+#      --model_path outputs/gemma3n_finetune_merged_16bit \
 #      --test_json dataset/qved_test.json \
-#      --data_path test_videos \
-#      --num_frames 10 \
-#      --max_new_tokens 512 \
-#      --limit 50
+#      --data_path videos \
+#      --num_frames 16 \
+#      --max_new_tokens 256 \
+#      --limit 100
 #
 # 4. Fast evaluation (skip BERT similarity):
-#    bash scripts/run_inference_transformers.sh --test_json dataset/qved_test.json --data_path test_videos --no-bert
+#    bash scripts/run_inference_unsloth.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --no-bert
 #
-# For help: bash scripts/run_inference_transformers.sh --help
+# For help: bash scripts/run_inference_unsloth.sh --help
 
 set -e  # Exit on error
 
 echo "========================================="
-echo "Gemma-3N QVED Inference (Transformers)"
-echo "Physiotherapy Exercise Video Analysis"
+echo "Gemma-3N Test Inference & Evaluation"
 echo "========================================="
 
 # Default values
@@ -92,17 +91,15 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            echo "Usage: bash scripts/run_inference_transformers.sh [--model_path <path> | --hf_repo <repo>] [options]"
-            echo ""
-            echo "QVED Physiotherapy Exercise Video Analysis"
+            echo "Usage: bash scripts/run_inference.sh [--model_path <path> | --hf_repo <repo>] [options]"
             echo ""
             echo "Model Source:"
-            echo "  --model_path      Path to local model checkpoint (default: google/gemma-3-4b-it)"
+            echo "  --model_path      Path to local finetuned model checkpoint (default: unsloth/gemma-3n-E2B-it)"
             echo "  --hf_repo         HuggingFace repository ID (alternative to model_path)"
             echo ""
             echo "Optional:"
-            echo "  --test_json       Path to QVED test set JSON (default: dataset/qved_test.json)"
-            echo "  --data_path       Base path for exercise video files (default: videos)"
+            echo "  --test_json       Path to test set JSON (default: dataset/qved_test.json)"
+            echo "  --data_path       Base path for video files (default: videos)"
             echo "  --output_dir      Output directory for results (default: auto-generated)"
             echo "  --device          Device to use: cuda/cpu (default: cuda)"
             echo "  --max_new_tokens  Max tokens to generate (default: 256)"
@@ -132,7 +129,7 @@ fi
 
 # Use default model if none specified
 if [ -z "$MODEL_PATH" ]; then
-    MODEL_PATH="google/gemma-3-4b-it"
+    MODEL_PATH="unsloth/gemma-3n-E2B-it"
     echo "📦 Using default model: $MODEL_PATH"
 fi
 
@@ -144,7 +141,7 @@ fi
 # Set output directory
 if [ -z "$OUTPUT_DIR" ]; then
     MODEL_NAME=$(basename "$MODEL_PATH" | sed 's|/|_|g')
-    OUTPUT_DIR="results/test_inference_transformers_${MODEL_NAME}"
+    OUTPUT_DIR="results/test_inference_${MODEL_NAME}"
 fi
 
 mkdir -p "$OUTPUT_DIR" 2>/dev/null || true
@@ -155,8 +152,8 @@ REPORT_FILE="${OUTPUT_DIR}/test_evaluation_report.xlsx"
 echo ""
 echo "Configuration:"
 echo "  Model path:      $MODEL_PATH"
-echo "  QVED Test JSON:  $TEST_JSON"
-echo "  Video path:      $DATA_PATH"
+echo "  Test JSON:       $TEST_JSON"
+echo "  Data path:       $DATA_PATH"
 echo "  Output dir:      $OUTPUT_DIR"
 echo "  Device:          $DEVICE"
 echo "  Max new tokens:  $MAX_NEW_TOKENS"
@@ -168,7 +165,7 @@ echo "========================================="
 echo ""
 
 # Step 1: Run inference
-echo "[Step 1/2] Running inference on QVED exercise videos..."
+echo "[Step 1/2] Running inference on test set..."
 echo "========================================="
 
 LIMIT_ARG=""
@@ -177,7 +174,7 @@ if [ -n "$LIMIT" ]; then
 fi
 
 set +e  # Don't exit on error for inference step
-python utils/test_inference_transformers.py \
+python utils/test_inference_unsloth.py \
     --model_path "$MODEL_PATH" \
     --test_json "$TEST_JSON" \
     --data_path "$DATA_PATH" \
@@ -243,5 +240,6 @@ if [ -f "$REPORT_FILE" ]; then
 else
     echo "  Report:      (not generated)"
 fi
+echo "  Report:      $REPORT_FILE"
 echo ""
 echo "========================================="

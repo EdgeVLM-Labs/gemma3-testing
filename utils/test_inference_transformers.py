@@ -16,7 +16,7 @@ import cv2
 import torch
 from PIL import Image
 from tqdm import tqdm
-from transformers import AutoProcessor, Gemma3ForConditionalGeneration
+from transformers import Gemma3Processor, Gemma3ForConditionalGeneration
 
 warnings.filterwarnings("ignore")
 
@@ -101,7 +101,7 @@ def get_video_inference(
         video_frames: List of (frame, timestamp) tuples
         prompt: Text prompt/question about exercise
         model: Loaded Gemma3ForConditionalGeneration model
-        processor: AutoProcessor
+        processor: Gemma3Processor
         max_new_tokens: Maximum tokens to generate
         frames_dir: Directory to temporarily save frames
     
@@ -248,7 +248,7 @@ def main():
             torch_dtype=torch.bfloat16
         ).eval()
         
-        processor = AutoProcessor.from_pretrained(args.model_path)
+        processor = Gemma3Processor.from_pretrained(args.model_path)
         print("✓ Model and processor loaded successfully")
     except Exception as e:
         print(f"❌ Error loading model: {e}")
