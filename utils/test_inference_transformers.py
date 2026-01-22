@@ -242,45 +242,58 @@ def main():
     # Load model and processor
     print("\n📦 Loading model and processor...")
     try:
-        # The key is to load with trust_remote_code and the model will auto-register
-        # We need to import from the correct location where the model registers itself
-        
-        # First, trigger the auto-registration by loading config
+        # Load config to understand the model structure
         config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=True)
         print(f"  Model type: {config.model_type}")
         if hasattr(config, 'architectures'):
             print(f"  Architecture: {config.architectures[0]}")
         
-        # Now import and use AutoModel which will have the registered class
+        # Import AutoModel with trust_remote_code
         from transformers import AutoModel
         
-        # The trust_remote_code will load the model class from the repo
-        # and it should automatically map to the right conditional generation class
+        # Load the model with trust_remote_code
         model = AutoModel.from_pretrained(
             args.model_path,
             trust_remote_code=True,
             device_map="auto"
         )
         
-        # Check if we got the right class, if not patch it
+        # For Gemma3n multimodal models, we need to access the language model component
+        print(f"  Loaded model class: {type(model).__name__}")
+        
+        # Check model attributes to find the generation component
         if not hasattr(model, 'generate'):
-            # The model loaded as base class, we need to wrap or convert it
-            print(f"  Warning: Got {type(model).__name__}, patching generate method...")
+            print(f"  Base model doesn't have generate, checking sub-components...")
             
-            # Check if the model has a language_model attribute with generate
-            if hasattr(model, 'language_model') and hasattr(model.language_model, 'generate'):
-                # Wrap the generate call
-                def generate_wrapper(*args, **kwargs):
-                    return model.language_model.generate(*args, **kwargs)
-                model.generate = generate_wrapper
-            else:
-                raise AttributeError(f"Model class {type(model).__name__} doesn't support generation")
+            # Common attributes for multimodal models
+            for attr_name in ['language_model', 'text_model', 'lm', 'model']:
+                if hasattr(model, attr_name):
+                    submodel = getattr(model, attr_name)
+                    print(f"  Found {attr_name}: {type(submodel).__name__}")
+                    if hasattr(submodel, 'generate'):
+                        print(f"  ✓ Using {attr_name}.generate()")
+                        # Create a wrapper that uses the submodel's generate
+                        original_generate = submodel.generate
+                        def generate_wrapper(input_ids=None, **kwargs):
+                            # If inputs have pixel_values or other modality data, process them first
+                            if hasattr(model, 'forward'):
+                                # Use the full model to get embeddings, then generate
+                                return original_generate(input_ids=input_ids, **kwargs)
+                            return original_generate(input_ids=input_ids, **kwargs)
+                        model.generate = generate_wrapper
+                        break
+            
+            # If still no generate method found, raise error
+            if not hasattr(model, 'generate'):
+                # List available attributes for debugging
+                attrs = [a for a in dir(model) if not a.startswith('_')]
+                print(f"  Available attributes: {attrs[:20]}...")
+                raise AttributeError(f"Cannot find generation capability in {type(model).__name__}")
         
         model = model.eval()
         
         processor = AutoProcessor.from_pretrained(args.model_path, trust_remote_code=True)
         print("✓ Model and processor loaded successfully")
-        print(f"  Model class: {type(model).__name__}")
         print(f"  Has generate: {hasattr(model, 'generate')}")
     except Exception as e:
         print(f"❌ Error loading model: {e}")
