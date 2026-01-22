@@ -16,7 +16,7 @@ import cv2
 import torch
 from PIL import Image
 from tqdm import tqdm
-from transformers.models.gemma3 import Gemma3Processor, Gemma3ForConditionalGeneration
+from transformers import AutoModel, AutoProcessor
 
 warnings.filterwarnings("ignore")
 
@@ -242,13 +242,13 @@ def main():
     # Load model and processor
     print("\n📦 Loading model and processor...")
     try:
-        model = Gemma3ForConditionalGeneration.from_pretrained(
+        model = AutoModel.from_pretrained(
             args.model_path,
             device_map="auto",
-            torch_dtype=torch.bfloat16
+            trust_remote_code=True
         ).eval()
         
-        processor = Gemma3Processor.from_pretrained(args.model_path)
+        processor = AutoProcessor.from_pretrained(args.model_path, trust_remote_code=True)
         print("✓ Model and processor loaded successfully")
     except Exception as e:
         print(f"❌ Error loading model: {e}")
