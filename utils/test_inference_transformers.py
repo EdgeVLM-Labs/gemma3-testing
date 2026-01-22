@@ -16,7 +16,7 @@ import cv2
 import torch
 from PIL import Image
 from tqdm import tqdm
-from transformers import AutoModel, AutoProcessor
+from transformers import AutoModelForCausalLM, AutoProcessor
 
 warnings.filterwarnings("ignore")
 
@@ -242,7 +242,7 @@ def main():
     # Load model and processor
     print("\n📦 Loading model and processor...")
     try:
-        model = AutoModel.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             args.model_path,
             device_map="auto",
             trust_remote_code=True
