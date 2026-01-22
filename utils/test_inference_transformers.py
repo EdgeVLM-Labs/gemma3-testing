@@ -261,34 +261,35 @@ def main():
         # For Gemma3n multimodal models, we need to access the language model component
         print(f"  Loaded model class: {type(model).__name__}")
         
-        # Check model attributes to find the generation component
+        # Check if the base model has generate, if not check language_model
         if not hasattr(model, 'generate'):
             print(f"  Base model doesn't have generate, checking sub-components...")
             
-            # Common attributes for multimodal models
-            for attr_name in ['language_model', 'text_model', 'lm', 'model']:
-                if hasattr(model, attr_name):
-                    submodel = getattr(model, attr_name)
-                    print(f"  Found {attr_name}: {type(submodel).__name__}")
-                    if hasattr(submodel, 'generate'):
-                        print(f"  ✓ Using {attr_name}.generate()")
-                        # Create a wrapper that uses the submodel's generate
-                        original_generate = submodel.generate
-                        def generate_wrapper(input_ids=None, **kwargs):
-                            # If inputs have pixel_values or other modality data, process them first
-                            if hasattr(model, 'forward'):
-                                # Use the full model to get embeddings, then generate
-                                return original_generate(input_ids=input_ids, **kwargs)
-                            return original_generate(input_ids=input_ids, **kwargs)
-                        model.generate = generate_wrapper
-                        break
-            
-            # If still no generate method found, raise error
-            if not hasattr(model, 'generate'):
-                # List available attributes for debugging
-                attrs = [a for a in dir(model) if not a.startswith('_')]
-                print(f"  Available attributes: {attrs[:20]}...")
-                raise AttributeError(f"Cannot find generation capability in {type(model).__name__}")
+            if hasattr(model, 'language_model'):
+                lang_model = model.language_model
+                print(f"  Found language_model: {type(lang_model).__name__}")
+                
+                # Check if language_model has generate
+                if hasattr(lang_model, 'generate'):
+                    print(f"  ✓ Using language_model.generate()")
+                    # Create wrapper that forwards to language_model.generate
+                    def generate_wrapper(**kwargs):
+                        return lang_model.generate(**kwargs)
+                    model.generate = generate_wrapper
+                else:
+                    # Language model doesn't have generate either
+                    # Try to check if the full model has forward and we can use generation utils
+                    print(f"  Language model doesn't have generate, checking if model can_generate...")
+                    if hasattr(model, 'can_generate') and model.can_generate():
+                        # Import GenerationMixin and add it
+                        from transformers import GenerationMixin
+                        # Manually add generate method from GenerationMixin
+                        model.generate = GenerationMixin.generate.__get__(model, type(model))
+                        print(f"  ✓ Added GenerationMixin.generate() to model")
+                    else:
+                        raise AttributeError(f"Cannot add generation capability to {type(model).__name__}")
+            else:
+                raise AttributeError(f"Model class {type(model).__name__} doesn't have language_model attribute")
         
         model = model.eval()
         
