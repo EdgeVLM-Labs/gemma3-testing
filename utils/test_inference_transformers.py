@@ -95,7 +95,7 @@ def get_video_inference(
 ) -> str:
     """
     Run inference on physiotherapy exercise video frames using Gemma-3 model.
-    Follows Google's official Gemma-3 video inference method.
+    Properly handles Gemma3n multimodal architecture.
     
     Args:
         video_frames: List of (frame, timestamp) tuples
@@ -111,81 +111,127 @@ def get_video_inference(
     if not video_frames:
         return "[ERROR: No frames extracted]"
     
-    # Create frames directory
-    os.makedirs(frames_dir, exist_ok=True)
+    # Extract images
+    images = [img for img, _ in video_frames]
     
-    # Build messages structure for physiotherapy exercise analysis
-    messages = [
-        {
-            "role": "system",
-            "content": [{"type": "text", "text": "You are an expert physiotherapy assistant specialized in analyzing exercise videos. Provide clear, concise answers about exercise form, technique, and recommendations."}]
-        },
-        {
-            "role": "user",
-            "content": [{"type": "text", "text": prompt}]
-        }
-    ]
-    
-    # Add frames to the message structure (following Google's method)
-    saved_frame_paths = []
-    for img, timestamp in video_frames:
-        # Save frame to disk
-        frame_path = os.path.join(frames_dir, f"frame_{timestamp}.png")
-        img.save(frame_path)
-        saved_frame_paths.append(frame_path)
-        
-        # Add frame reference to messages
-        messages[1]["content"].append({"type": "text", "text": f"Frame at {timestamp} seconds:"})
-        messages[1]["content"].append({"type": "image", "url": frame_path})
-    
+    # Method 1: Try simple processor call
     try:
-        # Tokenize inputs
-        inputs = processor.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt"
-        ).to(model.device)
+        # Simple text prompt
+        text_prompt = f"{prompt}"
         
-        input_length = inputs["input_ids"].shape[-1]
+        # Process inputs
+        inputs = processor(
+            text=text_prompt,
+            images=images,
+            return_tensors="pt",
+            padding=True
+        )
         
-        # Generate response using the model's forward + generation logic
+        # Move to device
+        inputs = {k: v.to(model.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+        
+        # Generate
         with torch.inference_mode():
-            # For Gemma3nModel, we need to use the model directly with generate
-            # The model should support this through its __call__ method
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
-                pad_token_id=processor.tokenizer.pad_token_id,
-                eos_token_id=processor.tokenizer.eos_token_id,
             )
-            output = outputs[0][input_length:]
         
-        # Decode response
-        response = processor.decode(output, skip_special_tokens=True)
+        # Decode full output first
+        full_response = processor.decode(outputs[0], skip_special_tokens=True)
         
-        # Clean up saved frames
-        for frame_path in saved_frame_paths:
-            try:
-                os.remove(frame_path)
-            except:
-                pass
+        # Try to extract just the answer part (remove the input prompt)
+        if text_prompt in full_response:
+            response = full_response.replace(text_prompt, "").strip()
+        else:
+            response = full_response
         
-        return response.strip()
+        return response if response else "[No response generated]"
     
-    except Exception as e:
-        print(f"❌ Error during inference: {e}")
-        import traceback
-        traceback.print_exc()
-        # Clean up on error
-        for frame_path in saved_frame_paths:
+    except Exception as e1:
+        print(f"  Method 1 failed: {e1}")
+        
+        # Method 2: Try chat template
+        try:
+            if hasattr(processor, 'apply_chat_template'):
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt}
+                        ] + [{"type": "image"} for _ in images]
+                    }
+                ]
+                
+                inputs = processor.apply_chat_template(
+                    messages,
+                    images=images,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    return_dict=True,
+                    return_tensors="pt"
+                )
+                
+                inputs = {k: v.to(model.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+                
+                with torch.inference_mode():
+                    outputs = model.generate(
+                        **inputs,
+                        max_new_tokens=max_new_tokens,
+                        do_sample=False,
+                    )
+                
+                response = processor.decode(outputs[0], skip_special_tokens=True)
+                return response.strip() if response.strip() else "[No response generated]"
+            else:
+                raise AttributeError("No apply_chat_template method")
+                
+        except Exception as e2:
+            print(f"  Method 2 failed: {e2}")
+            
+            # Method 3: Try manual forward pass
             try:
-                os.remove(frame_path)
-            except:
-                pass
-        return f"[ERROR: {str(e)}]"
+                # Process text and images separately
+                text_inputs = processor.tokenizer(
+                    prompt,
+                    return_tensors="pt",
+                    padding=True
+                ).to(model.device)
+                
+                if hasattr(processor, 'image_processor'):
+                    image_inputs = processor.image_processor(
+                        images=images,
+                        return_tensors="pt"
+                    )
+                    image_inputs = {k: v.to(model.device) if isinstance(v, torch.Tensor) else v 
+                                   for k, v in image_inputs.items()}
+                    
+                    # Combine inputs
+                    inputs = {**text_inputs, **image_inputs}
+                else:
+                    inputs = text_inputs
+                
+                with torch.inference_mode():
+                    outputs = model.generate(
+                        **inputs,
+                        max_new_tokens=max_new_tokens,
+                        do_sample=False,
+                    )
+                
+                response = processor.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                
+                # Clean up the response
+                if prompt in response:
+                    response = response.replace(prompt, "").strip()
+                
+                return response if response else "[No response generated]"
+                
+            except Exception as e3:
+                print(f"  Method 3 failed: {e3}")
+                import traceback
+                traceback.print_exc()
+                return f"[ERROR: All methods failed - {str(e1)[:50]}]"
 
 
 def load_test_data(test_json: str) -> List[dict]:
@@ -308,6 +354,16 @@ def main():
         processor = AutoProcessor.from_pretrained(args.model_path, trust_remote_code=True)
         print("✓ Model and processor loaded successfully")
         print(f"  Has generate: {hasattr(model, 'generate')}")
+        print(f"  Processor type: {type(processor).__name__}")
+        print(f"  Processor has apply_chat_template: {hasattr(processor, 'apply_chat_template')}")
+        
+        # Check if processor has image_processor
+        if hasattr(processor, 'image_processor'):
+            print(f"  Has image_processor: True")
+        if hasattr(processor, 'tokenizer'):
+            print(f"  Has tokenizer: True")
+            print(f"  Pad token ID: {processor.tokenizer.pad_token_id}")
+            print(f"  EOS token ID: {processor.tokenizer.eos_token_id}")
         
     except Exception as e:
         print(f"❌ Error loading model: {e}")
