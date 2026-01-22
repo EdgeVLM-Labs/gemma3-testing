@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gemma-3N QVED Test Inference Script (Transformers)
+Gemma-3N QVED Test Inference Script (Transformers) - FIXED
 Uses native transformers library for physiotherapy exercise video analysis
 """
 
@@ -100,7 +100,7 @@ def get_video_inference(
     Args:
         video_frames: List of (frame, timestamp) tuples
         prompt: Text prompt/question about exercise
-        model: Loaded Gemma3ForConditionalGeneration model
+        model: Loaded Gemma3nModel
         processor: Gemma3Processor
         max_new_tokens: Maximum tokens to generate
         frames_dir: Directory to temporarily save frames
@@ -150,14 +150,18 @@ def get_video_inference(
         
         input_length = inputs["input_ids"].shape[-1]
         
-        # Generate response
+        # Generate response using the model's forward + generation logic
         with torch.inference_mode():
-            output = model.generate(
+            # For Gemma3nModel, we need to use the model directly with generate
+            # The model should support this through its __call__ method
+            outputs = model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
-                do_sample=False
+                do_sample=False,
+                pad_token_id=processor.tokenizer.pad_token_id,
+                eos_token_id=processor.tokenizer.eos_token_id,
             )
-            output = output[0][input_length:]
+            output = outputs[0][input_length:]
         
         # Decode response
         response = processor.decode(output, skip_special_tokens=True)
@@ -173,6 +177,8 @@ def get_video_inference(
     
     except Exception as e:
         print(f"❌ Error during inference: {e}")
+        import traceback
+        traceback.print_exc()
         # Clean up on error
         for frame_path in saved_frame_paths:
             try:
@@ -180,8 +186,6 @@ def get_video_inference(
             except:
                 pass
         return f"[ERROR: {str(e)}]"
-
-
 
 
 def load_test_data(test_json: str) -> List[dict]:
@@ -248,56 +252,67 @@ def main():
         if hasattr(config, 'architectures'):
             print(f"  Architecture: {config.architectures[0]}")
         
-        # Import AutoModel with trust_remote_code
-        from transformers import AutoModel
+        # Import AutoModelForCausalLM which should handle generation properly
+        from transformers import AutoModelForCausalLM
         
-        # Load the model with trust_remote_code
-        model = AutoModel.from_pretrained(
-            args.model_path,
-            trust_remote_code=True,
-            device_map="auto"
-        )
-        
-        # For Gemma3n multimodal models, we need to access the language model component
-        print(f"  Loaded model class: {type(model).__name__}")
-        
-        # Check if the base model has generate, if not check language_model
-        if not hasattr(model, 'generate'):
-            print(f"  Base model doesn't have generate, checking sub-components...")
+        # Try loading with AutoModelForCausalLM first
+        print("  Attempting to load with AutoModelForCausalLM...")
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                args.model_path,
+                trust_remote_code=True,
+                device_map="auto",
+                torch_dtype=torch.float16 if args.device == "cuda" else torch.float32
+            )
+            print(f"  ✓ Loaded with AutoModelForCausalLM: {type(model).__name__}")
+        except Exception as e:
+            print(f"  AutoModelForCausalLM failed: {e}")
+            print("  Falling back to AutoModel...")
             
-            if hasattr(model, 'language_model'):
-                lang_model = model.language_model
-                print(f"  Found language_model: {type(lang_model).__name__}")
+            from transformers import AutoModel
+            model = AutoModel.from_pretrained(
+                args.model_path,
+                trust_remote_code=True,
+                device_map="auto"
+            )
+            print(f"  Loaded model class: {type(model).__name__}")
+            
+            # For Gemma3n, manually add generation capability
+            if not hasattr(model, 'generate'):
+                print("  Adding generation capability...")
+                from transformers.generation import GenerationMixin
                 
-                # Check if language_model has generate
-                if hasattr(lang_model, 'generate'):
-                    print(f"  ✓ Using language_model.generate()")
-                    # Create wrapper that forwards to language_model.generate
-                    def generate_wrapper(**kwargs):
-                        return lang_model.generate(**kwargs)
-                    model.generate = generate_wrapper
-                else:
-                    # Language model doesn't have generate either
-                    # Try to check if the full model has forward and we can use generation utils
-                    print(f"  Language model doesn't have generate, checking if model can_generate...")
-                    if hasattr(model, 'can_generate') and model.can_generate():
-                        # Import GenerationMixin and add it
-                        from transformers import GenerationMixin
-                        # Manually add generate method from GenerationMixin
-                        model.generate = GenerationMixin.generate.__get__(model, type(model))
-                        print(f"  ✓ Added GenerationMixin.generate() to model")
-                    else:
-                        raise AttributeError(f"Cannot add generation capability to {type(model).__name__}")
-            else:
-                raise AttributeError(f"Model class {type(model).__name__} doesn't have language_model attribute")
+                # Make the model inherit from GenerationMixin
+                model.__class__ = type(
+                    model.__class__.__name__,
+                    (model.__class__, GenerationMixin),
+                    {}
+                )
+                
+                # Ensure the model can generate
+                if hasattr(model, 'language_model'):
+                    # Route generate calls through language_model if it exists
+                    original_prepare = model.prepare_inputs_for_generation if hasattr(model, 'prepare_inputs_for_generation') else None
+                    
+                    def prepare_inputs_for_generation(self, input_ids, **kwargs):
+                        if original_prepare:
+                            return original_prepare(input_ids, **kwargs)
+                        return {"input_ids": input_ids, **kwargs}
+                    
+                    model.prepare_inputs_for_generation = prepare_inputs_for_generation.__get__(model)
+                
+                print("  ✓ Generation capability added")
         
         model = model.eval()
         
         processor = AutoProcessor.from_pretrained(args.model_path, trust_remote_code=True)
         print("✓ Model and processor loaded successfully")
         print(f"  Has generate: {hasattr(model, 'generate')}")
+        
     except Exception as e:
         print(f"❌ Error loading model: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
     
     # Load test data
