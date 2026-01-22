@@ -16,7 +16,7 @@ import cv2
 import torch
 from PIL import Image
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoProcessor
+from transformers import AutoConfig, AutoProcessor
 
 warnings.filterwarnings("ignore")
 
@@ -242,7 +242,22 @@ def main():
     # Load model and processor
     print("\n📦 Loading model and processor...")
     try:
-        model = AutoModelForCausalLM.from_pretrained(
+        # Load the model with trust_remote_code to get the correct Gemma3n architecture
+        # The config specifies 'Gemma3nForConditionalGeneration' as the architecture
+        from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+        from transformers import PreTrainedModel
+        
+        # Load config to determine the correct architecture
+        config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=True)
+        
+        # Use the architecture class name to load the right model
+        # This ensures we get Gemma3nForConditionalGeneration, not Gemma3nModel
+        model_class_name = config.architectures[0] if hasattr(config, 'architectures') else None
+        print(f"  Loading architecture: {model_class_name}")
+        
+        # Load with from_pretrained which will use the architecture specified in config
+        from transformers import AutoModelForPreTraining
+        model = AutoModelForPreTraining.from_pretrained(
             args.model_path,
             device_map="auto",
             trust_remote_code=True
@@ -250,6 +265,7 @@ def main():
         
         processor = AutoProcessor.from_pretrained(args.model_path, trust_remote_code=True)
         print("✓ Model and processor loaded successfully")
+        print(f"  Model class: {type(model).__name__}")
     except Exception as e:
         print(f"❌ Error loading model: {e}")
         sys.exit(1)
