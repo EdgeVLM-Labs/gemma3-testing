@@ -242,42 +242,39 @@ def main():
     # Load model and processor
     print("\n📦 Loading model and processor...")
     try:
-        # Load model using generic from_pretrained with trust_remote_code
-        # This will automatically load the correct Gemma3nForConditionalGeneration class
+        # Load config
         config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=True)
         print(f"  Model type: {config.model_type}")
         if hasattr(config, 'architectures'):
             print(f"  Architecture: {config.architectures[0]}")
         
-        # Import the model class from the hub with trust_remote_code
-        from transformers import pipeline
+        # Download and import the modeling file directly to get the right class
         from huggingface_hub import hf_hub_download
         import sys
+        import importlib.util
         
-        # Download the modeling file and import directly
-        try:
-            modeling_file = hf_hub_download(
-                repo_id=args.model_path,
-                filename="modeling_gemma3n.py",
-                repo_type="model"
-            )
-            # Add to path and import
-            sys.path.insert(0, str(Path(modeling_file).parent))
-            from modeling_gemma3n import Gemma3nForConditionalGeneration
-            
-            model = Gemma3nForConditionalGeneration.from_pretrained(
-                args.model_path,
-                device_map="auto",
-                trust_remote_code=True
-            ).eval()
-        except Exception as e:
-            print(f"  Could not load directly, trying AutoModel: {e}")
-            from transformers import AutoModel
-            model = AutoModel.from_pretrained(
-                args.model_path,
-                trust_remote_code=True,
-                device_map="auto"
-            ).eval()
+        # Download modeling_gemma3n.py
+        modeling_file = hf_hub_download(
+            repo_id=args.model_path,
+            filename="modeling_gemma3n.py",
+            repo_type="model"
+        )
+        
+        # Load the module
+        spec = importlib.util.spec_from_file_location("modeling_gemma3n", modeling_file)
+        modeling_module = importlib.util.module_from_spec(spec)
+        sys.modules["modeling_gemma3n"] = modeling_module
+        spec.loader.exec_module(modeling_module)
+        
+        # Get the conditional generation class
+        Gemma3nForConditionalGeneration = modeling_module.Gemma3nForConditionalGeneration
+        
+        # Load the model with the correct class
+        model = Gemma3nForConditionalGeneration.from_pretrained(
+            args.model_path,
+            device_map="auto",
+            trust_remote_code=True
+        ).eval()
         
         processor = AutoProcessor.from_pretrained(args.model_path, trust_remote_code=True)
         print("✓ Model and processor loaded successfully")
