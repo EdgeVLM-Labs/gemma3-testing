@@ -242,39 +242,41 @@ def main():
     # Load model and processor
     print("\n📦 Loading model and processor...")
     try:
-        # Load config
+        # The key is to load with trust_remote_code and the model will auto-register
+        # We need to import from the correct location where the model registers itself
+        
+        # First, trigger the auto-registration by loading config
         config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=True)
         print(f"  Model type: {config.model_type}")
         if hasattr(config, 'architectures'):
             print(f"  Architecture: {config.architectures[0]}")
         
-        # Download and import the modeling file directly to get the right class
-        from huggingface_hub import hf_hub_download
-        import sys
-        import importlib.util
+        # Now import and use AutoModel which will have the registered class
+        from transformers import AutoModel
         
-        # Download modeling_gemma3n.py
-        modeling_file = hf_hub_download(
-            repo_id=args.model_path,
-            filename="modeling_gemma3n.py",
-            repo_type="model"
+        # The trust_remote_code will load the model class from the repo
+        # and it should automatically map to the right conditional generation class
+        model = AutoModel.from_pretrained(
+            args.model_path,
+            trust_remote_code=True,
+            device_map="auto"
         )
         
-        # Load the module
-        spec = importlib.util.spec_from_file_location("modeling_gemma3n", modeling_file)
-        modeling_module = importlib.util.module_from_spec(spec)
-        sys.modules["modeling_gemma3n"] = modeling_module
-        spec.loader.exec_module(modeling_module)
+        # Check if we got the right class, if not patch it
+        if not hasattr(model, 'generate'):
+            # The model loaded as base class, we need to wrap or convert it
+            print(f"  Warning: Got {type(model).__name__}, patching generate method...")
+            
+            # Check if the model has a language_model attribute with generate
+            if hasattr(model, 'language_model') and hasattr(model.language_model, 'generate'):
+                # Wrap the generate call
+                def generate_wrapper(*args, **kwargs):
+                    return model.language_model.generate(*args, **kwargs)
+                model.generate = generate_wrapper
+            else:
+                raise AttributeError(f"Model class {type(model).__name__} doesn't support generation")
         
-        # Get the conditional generation class
-        Gemma3nForConditionalGeneration = modeling_module.Gemma3nForConditionalGeneration
-        
-        # Load the model with the correct class
-        model = Gemma3nForConditionalGeneration.from_pretrained(
-            args.model_path,
-            device_map="auto",
-            trust_remote_code=True
-        ).eval()
+        model = model.eval()
         
         processor = AutoProcessor.from_pretrained(args.model_path, trust_remote_code=True)
         print("✓ Model and processor loaded successfully")
