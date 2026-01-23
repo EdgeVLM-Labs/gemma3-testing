@@ -59,32 +59,37 @@ python utils/infer_qved.py \
     --prompt "Describe this exercise video"
 ```
 
-### test_inference.py
+### test_inference_unsloth.py
 
-**Purpose:** Run batch inference on the QVED test set and save predictions to JSON.
+**Purpose:** Run batch inference on the QVED test set using Unsloth FastVisionModel and save predictions to JSON.
 
 **Arguments:**
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
-| `--model_path` | str | _required_ | Path to finetuned model checkpoint |
+| `--model_path` | str | _required_ | Path to finetuned model or HuggingFace model name |
 | `--test_json` | str | `dataset/qved_test.json` | Path to test set JSON |
-| `--data_path` | str | `dataset` | Base path for video files |
-| `--output` | str | Model directory | Output file for predictions |
+| `--data_path` | str | `videos` | Base path for video files |
+| `--output` | str | Auto-generated | Output file for predictions |
 | `--device` | str | `cuda` | Device to use (`cuda`/`cpu`) |
-| `--max_new_tokens` | int | `64` | Maximum new tokens to generate |
-| `--base_model` | str | `Amshaker/Mobile-VideoGPT-0.5B` | Base model for LoRA adapters |
+| `--max_new_tokens` | int | `256` | Maximum new tokens to generate |
+| `--num_frames` | int | `8` | Number of frames to extract per video |
 | `--limit` | int | `None` | Limit samples to process (for testing) |
 
 **Sample Commands:**
 
 ```bash
-# Run on full test set
-python utils/test_inference.py \
-    --model_path results/qved_finetune_mobilevideogpt_0.5B/checkpoint-70
+# Run on full test set with fine-tuned model
+python utils/test_inference_unsloth.py \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit
+
+# Run with base model for comparison
+python utils/test_inference_unsloth.py \
+    --model_path unsloth/gemma-3n-E4B-it \
+    --limit 50
 
 # Run with sample limit (for quick testing)
-python utils/test_inference.py \
-    --model_path results/qved_finetune_mobilevideogpt_0.5B \
+python utils/test_inference_unsloth.py \
+    --model_path outputs/gemma3n_finetune_merged_16bit \
     --limit 10 \
     --output test_predictions_sample.json
 ```
@@ -98,7 +103,7 @@ python utils/test_inference.py \
 **Arguments:**
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
-| `--predictions` | str | _required_ | Path to predictions JSON from `test_inference.py` |
+| `--predictions` | str | _required_ | Path to predictions JSON from `test_inference_unsloth.py` |
 | `--output` | str | Same directory as predictions | Output Excel file path |
 | `--no-bert` | flag | `False` | Skip BERT similarity (faster evaluation) |
 
@@ -107,7 +112,7 @@ python utils/test_inference.py \
 ```bash
 # Generate full report with BERT similarity
 python utils/generate_test_report.py \
-    --predictions results/qved_finetune_mobilevideogpt_0.5B/test_predictions.json
+    --predictions results/test_inference_model/test_predictions.json
 
 # Generate report without BERT (faster)
 python utils/generate_test_report.py \
@@ -345,5 +350,33 @@ Calls the following utilities:
 
 Wrapper script that combines:
 
-1. `utils/test_inference.py` - Run batch inference on test set
-2. `utils/generate_test_report.py` - Generate evaluation report
+1. `utils/test_inference_unsloth.py` - Run batch inference on test set with Unsloth FastVisionModel
+2. `utils/generate_test_report.py` - Generate evaluation report with BERT/ROUGE/METEOR metrics
+
+**Features:**
+- Automatically runs inference and generates evaluation report
+- Handles errors gracefully (generates report even if some videos fail)
+- Supports both fine-tuned and base models
+- Configurable sample limits and evaluation options
+
+**Sample Commands:**
+
+```bash
+# Test with fine-tuned model (default: 50 samples)
+bash scripts/run_inference.sh \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit
+
+# Test with base model
+bash scripts/run_inference.sh \
+    --model_path unsloth/gemma-3n-E4B-it
+
+# Full test set (no limit)
+bash scripts/run_inference.sh \
+    --model_path outputs/gemma3n_finetune_merged_16bit \
+    --limit ""
+
+# Fast evaluation (skip BERT)
+bash scripts/run_inference.sh \
+    --model_path outputs/gemma3n_finetune_merged_16bit \
+    --no-bert
+```

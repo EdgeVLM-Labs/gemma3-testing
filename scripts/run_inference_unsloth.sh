@@ -6,13 +6,13 @@
 # USAGE EXAMPLES:
 #
 # 1. Quick test with HuggingFace model:
-#    bash scripts/run_inference.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --data_path videos --limit 10
+#    bash scripts/run_inference_unsloth.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --data_path videos --limit 10
 #
 # 2. Using local fine-tuned model:
-#    bash scripts/run_inference.sh --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit --test_json dataset/qved_test.json --data_path videos
+#    bash scripts/run_inference_unsloth.sh --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit --test_json dataset/qved_test.json --data_path videos
 #
 # 3. Full inference with custom settings:
-#    bash scripts/run_inference.sh \
+#    bash scripts/run_inference_unsloth.sh \
 #      --model_path outputs/gemma3n_finetune_merged_16bit \
 #      --test_json dataset/qved_test.json \
 #      --data_path videos \
@@ -21,9 +21,9 @@
 #      --limit 100
 #
 # 4. Fast evaluation (skip BERT similarity):
-#    bash scripts/run_inference.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --no-bert
+#    bash scripts/run_inference_unsloth.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --no-bert
 #
-# For help: bash scripts/run_inference.sh --help
+# For help: bash scripts/run_inference_unsloth.sh --help
 
 set -e  # Exit on error
 
