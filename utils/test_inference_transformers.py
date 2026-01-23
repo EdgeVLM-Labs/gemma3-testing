@@ -117,10 +117,19 @@ def get_video_inference(
     try:
         # Construct messages in the proper Gemma 3n chat format
         # System message followed by user message with images and text
+        # Format output as: <exercise> - <feedback>
+        system_prompt = (
+            "You are a helpful assistant analyzing physiotherapy exercise videos. "
+            "Always provide your response in the following format:\n"
+            "<exercise_name> - <detailed_feedback>\n\n"
+            "Where <exercise_name> is the name of the exercise being performed, "
+            "and <detailed_feedback> describes the form, technique, mistakes (if any), and recommendations."
+        )
+        
         messages = [
             {
                 "role": "system",
-                "content": [{"type": "text", "text": "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend?"}]
+                "content": [{"type": "text", "text": system_prompt}]
             },
             {
                 "role": "user",
