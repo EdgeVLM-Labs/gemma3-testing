@@ -119,7 +119,7 @@ def get_video_inference(
         # System message followed by user message with images and text
         # Format output as: <exercise> - <feedback>
         system_prompt = (
-            "You are a helpful assistant analyzing physiotherapy exercise videos. "
+            "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend?"
             "Always provide your response in the following format:\n"
             "<exercise_name> - <detailed_feedback>\n\n"
             "Where <exercise_name> is the name of the exercise being performed, "
