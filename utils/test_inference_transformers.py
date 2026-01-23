@@ -91,11 +91,13 @@ def get_video_inference(
     model,
     processor,
     max_new_tokens: int = 256,
-    frames_dir: str = "temp_frames"
+    frames_dir: str = "temp_frames",
+    video_identifier: str = "video"
 ) -> str:
     """
     Run inference on physiotherapy exercise video frames using Gemma-3n model.
     Uses proper chat template format for Gemma3nForConditionalGeneration.
+    Saves extracted frames to disk before processing.
     
     Args:
         video_frames: List of (frame, timestamp) tuples
@@ -103,7 +105,8 @@ def get_video_inference(
         model: Loaded Gemma3nForConditionalGeneration model
         processor: AutoProcessor for Gemma 3n
         max_new_tokens: Maximum tokens to generate
-        frames_dir: Directory to temporarily save frames (unused but kept for compatibility)
+        frames_dir: Directory to save extracted frames
+        video_identifier: Identifier for the video (used in filenames)
     
     Returns:
         Model response string
@@ -111,8 +114,19 @@ def get_video_inference(
     if not video_frames:
         return "[ERROR: No frames extracted]"
     
-    # Extract images from video frames
-    images = [img for img, _ in video_frames]
+    # Create directory for saving frames
+    os.makedirs(frames_dir, exist_ok=True)
+    
+    # Extract images from video frames and save them
+    images = []
+    for idx, (img, timestamp) in enumerate(video_frames):
+        # Save frame to disk
+        frame_filename = f"{video_identifier}_frame_{idx:03d}_t{timestamp:.2f}s.jpg"
+        frame_path = os.path.join(frames_dir, frame_filename)
+        img.save(frame_path, quality=95)
+        images.append(img)
+    
+    print(f"  💾 Saved {len(images)} frames to {frames_dir}")
     
     try:
         # Construct messages in the proper Gemma 3n chat format
@@ -300,9 +314,11 @@ def main():
             # Extract frames and run inference
             frames = extract_frames(full_path, args.num_frames)
             if frames:
+                # Create a clean identifier from video path
+                video_id = os.path.splitext(os.path.basename(video_path))[0]
                 prediction = get_video_inference(
                     frames, question, model, processor, 
-                    args.max_new_tokens, frames_temp_dir
+                    args.max_new_tokens, frames_temp_dir, video_id
                 )
             else:
                 prediction = "[ERROR: Failed to extract frames from video]"
