@@ -307,6 +307,16 @@ def main():
         # Construct full path
         full_path = os.path.join(args.data_path, video_path)
         
+        # Format the detailed question that will be sent to the model
+        detailed_question = (
+            f"{question}\n\n"
+            "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend? "
+            "Always provide your response in the following format:\n"
+            "<exercise_name> - <detailed_feedback>\n\n"
+            "Where <exercise_name> is the name of the exercise being performed, "
+            "and <detailed_feedback> describes the form, technique, mistakes (if any), and recommendations."
+        )
+        
         if not os.path.exists(full_path):
             print(f"\n⚠️  Video not found: {full_path}")
             prediction = "[ERROR: Video file not found]"
@@ -325,7 +335,7 @@ def main():
         
         predictions.append({
             "video_path": video_path,
-            "question": question,
+            "question": detailed_question,
             "ground_truth": ground_truth,
             "prediction": prediction
         })
