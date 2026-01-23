@@ -76,7 +76,6 @@ else
             exit 1
         }
 fi
-source ~/.bashrc
 
 # ----------------------------
 # Activate environment

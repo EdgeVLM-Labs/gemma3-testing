@@ -120,7 +120,7 @@ def get_video_inference(
         messages = [
             {
                 "role": "system",
-                "content": [{"type": "text", "text": "You are a helpful assistant analyzing physiotherapy exercise videos."}]
+                "content": [{"type": "text", "text": "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend?"}]
             },
             {
                 "role": "user",
