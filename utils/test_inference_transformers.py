@@ -16,7 +16,7 @@ import cv2
 import torch
 from PIL import Image
 from tqdm import tqdm
-from transformers import AutoConfig, AutoProcessor
+from transformers import AutoProcessor, Gemma3nForConditionalGeneration
 
 warnings.filterwarnings("ignore")
 
@@ -94,16 +94,16 @@ def get_video_inference(
     frames_dir: str = "temp_frames"
 ) -> str:
     """
-    Run inference on physiotherapy exercise video frames using Gemma-3 model.
-    Properly handles Gemma3n multimodal architecture.
+    Run inference on physiotherapy exercise video frames using Gemma-3n model.
+    Uses proper chat template format for Gemma3nForConditionalGeneration.
     
     Args:
         video_frames: List of (frame, timestamp) tuples
         prompt: Text prompt/question about exercise
-        model: Loaded Gemma3nModel
-        processor: Gemma3Processor
+        model: Loaded Gemma3nForConditionalGeneration model
+        processor: AutoProcessor for Gemma 3n
         max_new_tokens: Maximum tokens to generate
-        frames_dir: Directory to temporarily save frames
+        frames_dir: Directory to temporarily save frames (unused but kept for compatibility)
     
     Returns:
         Model response string
@@ -111,127 +111,57 @@ def get_video_inference(
     if not video_frames:
         return "[ERROR: No frames extracted]"
     
-    # Extract images
+    # Extract images from video frames
     images = [img for img, _ in video_frames]
     
-    # Method 1: Try simple processor call
     try:
-        # Simple text prompt
-        text_prompt = f"{prompt}"
+        # Construct messages in the proper Gemma 3n chat format
+        # System message followed by user message with images and text
+        messages = [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": "You are a helpful assistant analyzing physiotherapy exercise videos."}]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt}
+                ] + [{"type": "image", "image": img} for img in images]
+            }
+        ]
         
-        # Process inputs
-        inputs = processor(
-            text=text_prompt,
-            images=images,
+        # Apply chat template to format inputs
+        inputs = processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
             return_tensors="pt",
-            padding=True
-        )
+        ).to(model.device, dtype=model.dtype)
         
-        # Move to device
-        inputs = {k: v.to(model.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+        # Track input length to extract only the generated part
+        input_len = inputs["input_ids"].shape[-1]
         
-        # Generate
+        # Generate response
         with torch.inference_mode():
-            outputs = model.generate(
+            generation = model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
-                do_sample=False,
+                do_sample=False
             )
+            # Extract only the generated tokens (excluding input)
+            generation = generation[0][input_len:]
         
-        # Decode full output first
-        full_response = processor.decode(outputs[0], skip_special_tokens=True)
+        # Decode the generated tokens
+        decoded = processor.decode(generation, skip_special_tokens=True)
         
-        # Try to extract just the answer part (remove the input prompt)
-        if text_prompt in full_response:
-            response = full_response.replace(text_prompt, "").strip()
-        else:
-            response = full_response
-        
-        return response if response else "[No response generated]"
+        return decoded.strip() if decoded.strip() else "[No response generated]"
     
-    except Exception as e1:
-        print(f"  Method 1 failed: {e1}")
-        
-        # Method 2: Try chat template
-        try:
-            if hasattr(processor, 'apply_chat_template'):
-                messages = [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt}
-                        ] + [{"type": "image"} for _ in images]
-                    }
-                ]
-                
-                inputs = processor.apply_chat_template(
-                    messages,
-                    images=images,
-                    add_generation_prompt=True,
-                    tokenize=True,
-                    return_dict=True,
-                    return_tensors="pt"
-                )
-                
-                inputs = {k: v.to(model.device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
-                
-                with torch.inference_mode():
-                    outputs = model.generate(
-                        **inputs,
-                        max_new_tokens=max_new_tokens,
-                        do_sample=False,
-                    )
-                
-                response = processor.decode(outputs[0], skip_special_tokens=True)
-                return response.strip() if response.strip() else "[No response generated]"
-            else:
-                raise AttributeError("No apply_chat_template method")
-                
-        except Exception as e2:
-            print(f"  Method 2 failed: {e2}")
-            
-            # Method 3: Try manual forward pass
-            try:
-                # Process text and images separately
-                text_inputs = processor.tokenizer(
-                    prompt,
-                    return_tensors="pt",
-                    padding=True
-                ).to(model.device)
-                
-                if hasattr(processor, 'image_processor'):
-                    image_inputs = processor.image_processor(
-                        images=images,
-                        return_tensors="pt"
-                    )
-                    image_inputs = {k: v.to(model.device) if isinstance(v, torch.Tensor) else v 
-                                   for k, v in image_inputs.items()}
-                    
-                    # Combine inputs
-                    inputs = {**text_inputs, **image_inputs}
-                else:
-                    inputs = text_inputs
-                
-                with torch.inference_mode():
-                    outputs = model.generate(
-                        **inputs,
-                        max_new_tokens=max_new_tokens,
-                        do_sample=False,
-                    )
-                
-                response = processor.tokenizer.decode(outputs[0], skip_special_tokens=True)
-                
-                # Clean up the response
-                if prompt in response:
-                    response = response.replace(prompt, "").strip()
-                
-                return response if response else "[No response generated]"
-                
-            except Exception as e3:
-                print(f"  Method 3 failed: {e3}")
-                import traceback
-                traceback.print_exc()
-                return f"[ERROR: All methods failed - {str(e1)[:50]}]"
+    except Exception as e:
+        print(f"  ❌ Inference failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return f"[ERROR: {str(e)[:100]}]"
 
 
 def load_test_data(test_json: str) -> List[dict]:
@@ -292,78 +222,28 @@ def main():
     # Load model and processor
     print("\n📦 Loading model and processor...")
     try:
-        # Load config to understand the model structure
-        config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=True)
-        print(f"  Model type: {config.model_type}")
-        if hasattr(config, 'architectures'):
-            print(f"  Architecture: {config.architectures[0]}")
+        # Determine dtype based on device
+        dtype = torch.bfloat16 if args.device == "cuda" and torch.cuda.is_bf16_supported() else torch.float16 if args.device == "cuda" else torch.float32
         
-        # Import AutoModelForCausalLM which should handle generation properly
-        from transformers import AutoModelForCausalLM
+        print(f"  Using dtype: {dtype}")
         
-        # Try loading with AutoModelForCausalLM first
-        print("  Attempting to load with AutoModelForCausalLM...")
-        try:
-            model = AutoModelForCausalLM.from_pretrained(
-                args.model_path,
-                trust_remote_code=True,
-                device_map="auto",
-                torch_dtype=torch.float16 if args.device == "cuda" else torch.float32
-            )
-            print(f"  ✓ Loaded with AutoModelForCausalLM: {type(model).__name__}")
-        except Exception as e:
-            print(f"  AutoModelForCausalLM failed: {e}")
-            print("  Falling back to AutoModel...")
-            
-            from transformers import AutoModel
-            model = AutoModel.from_pretrained(
-                args.model_path,
-                trust_remote_code=True,
-                device_map="auto"
-            )
-            print(f"  Loaded model class: {type(model).__name__}")
-            
-            # For Gemma3n, manually add generation capability
-            if not hasattr(model, 'generate'):
-                print("  Adding generation capability...")
-                from transformers.generation import GenerationMixin
-                
-                # Make the model inherit from GenerationMixin
-                model.__class__ = type(
-                    model.__class__.__name__,
-                    (model.__class__, GenerationMixin),
-                    {}
-                )
-                
-                # Ensure the model can generate
-                if hasattr(model, 'language_model'):
-                    # Route generate calls through language_model if it exists
-                    original_prepare = model.prepare_inputs_for_generation if hasattr(model, 'prepare_inputs_for_generation') else None
-                    
-                    def prepare_inputs_for_generation(self, input_ids, **kwargs):
-                        if original_prepare:
-                            return original_prepare(input_ids, **kwargs)
-                        return {"input_ids": input_ids, **kwargs}
-                    
-                    model.prepare_inputs_for_generation = prepare_inputs_for_generation.__get__(model)
-                
-                print("  ✓ Generation capability added")
+        # Load Gemma3nForConditionalGeneration model
+        model = Gemma3nForConditionalGeneration.from_pretrained(
+            args.model_path,
+            device_map="auto" if args.device == "cuda" else "cpu",
+            torch_dtype=dtype,
+            trust_remote_code=True
+        ).eval()
         
-        model = model.eval()
+        print(f"  ✓ Model loaded: {type(model).__name__}")
+        print(f"  Model device: {model.device}")
+        print(f"  Model dtype: {model.dtype}")
         
+        # Load processor
         processor = AutoProcessor.from_pretrained(args.model_path, trust_remote_code=True)
-        print("✓ Model and processor loaded successfully")
-        print(f"  Has generate: {hasattr(model, 'generate')}")
-        print(f"  Processor type: {type(processor).__name__}")
-        print(f"  Processor has apply_chat_template: {hasattr(processor, 'apply_chat_template')}")
+        print(f"  ✓ Processor loaded: {type(processor).__name__}")
         
-        # Check if processor has image_processor
-        if hasattr(processor, 'image_processor'):
-            print(f"  Has image_processor: True")
-        if hasattr(processor, 'tokenizer'):
-            print(f"  Has tokenizer: True")
-            print(f"  Pad token ID: {processor.tokenizer.pad_token_id}")
-            print(f"  EOS token ID: {processor.tokenizer.eos_token_id}")
+        print("✓ Model and processor loaded successfully")
         
     except Exception as e:
         print(f"❌ Error loading model: {e}")
