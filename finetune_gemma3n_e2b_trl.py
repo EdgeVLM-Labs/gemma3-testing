@@ -6,15 +6,15 @@ Uses TRL SFTTrainer with video frame extraction for physiotherapy exercise analy
 USAGE:
     Basic training with default hyperparameters:
         python finetune_gemma3n_e2b_trl.py \
-            --train_json data/qved_train.json \
-            --val_json data/qved_val.json \
+            --train_json dataset/qved_train.json \
+            --val_json dataset/qved_val.json \
             --data_path videos/ \
             --output_dir ./outputs/gemma3n-e2b-qved-ft
 
     Custom hyperparameters:
         python finetune_gemma3n_e2b_trl.py \
-            --train_json data/qved_train.json \
-            --val_json data/qved_val.json \
+            --train_json dataset/qved_train.json \
+            --val_json dataset/qved_val.json \
             --data_path videos/ \
             --output_dir ./outputs/custom-run \
             --num_train_epochs 5 \
@@ -23,8 +23,8 @@ USAGE:
 
     With wandb logging:
         python finetune_gemma3n_e2b_trl.py \
-            --train_json data/qved_train.json \
-            --val_json data/qved_val.json \
+            --train_json dataset/qved_train.json \
+            --val_json dataset/qved_val.json \
             --data_path videos/ \
             --output_dir ./outputs/run1 \
             --wandb_project "gemma3n-qved-finetuning" \
@@ -32,8 +32,8 @@ USAGE:
 
     Resume from checkpoint:
         python finetune_gemma3n_e2b_trl.py \
-            --train_json data/qved_train.json \
-            --val_json data/qved_val.json \
+            --train_json dataset/qved_train.json \
+            --val_json dataset/qved_val.json \
             --data_path videos/ \
             --output_dir ./outputs/gemma3n-e2b-qved-ft \
             --resume_from_checkpoint ./outputs/gemma3n-e2b-qved-ft/checkpoint-30
