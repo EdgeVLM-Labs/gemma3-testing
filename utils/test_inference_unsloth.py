@@ -1,0 +1,403 @@
+#!/usr/bin/env python3
+"""
+Test Inference Script for QVED Dataset using Unsloth FastVisionModel
+
+This script runs inference on videos from the QVED test set using a finetuned Gemma-3N model.
+It loads videos from qved_test.json and generates predictions.
+
+Usage:
+    python utils/test_inference_unsloth.py --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit
+    python utils/test_inference_unsloth.py --model_path unsloth/gemma-3n-E4B-it --output test_predictions.json
+"""
+
+import os
+import warnings
+import logging
+import argparse
+import json
+import time
+from pathlib import Path
+from typing import List
+import gc
+
+os.environ['PYTHONWARNINGS'] = 'ignore'
+warnings.filterwarnings("ignore")
+
+logging.getLogger('mmengine').setLevel(logging.CRITICAL)
+logging.getLogger('transformers').setLevel(logging.CRITICAL)
+logging.getLogger('transformers.modeling_utils').setLevel(logging.CRITICAL)
+
+import torch
+import cv2
+import numpy as np
+from PIL import Image
+from tqdm import tqdm
+from unsloth import FastVisionModel
+from transformers import TextStreamer
+
+
+def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
+    """Extract evenly-spaced frames from a video file."""
+    cap = cv2.VideoCapture(str(video_path))
+
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video file: {video_path}")
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    if total_frames <= 0:
+        cap.release()
+        raise ValueError(f"Video has no frames: {video_path}")
+    
+    # Calculate step size for frame extraction - ensure at least 1
+    step = max(1, total_frames // num_frames)
+    frames = []
+
+    for i in range(num_frames):
+        frame_idx = min(i * step, total_frames - 1)  # Prevent overflow
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ret, frame = cap.read()
+        if not ret:
+            print(f"⚠ Warning: Could not read frame {frame_idx} from {video_path}")
+            break
+        
+        # Convert BGR (OpenCV) to RGB (PIL)
+        img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        frames.append(img)
+
+    cap.release()
+    
+    if len(frames) == 0:
+        raise ValueError(f"No frames extracted from {video_path}")
+    
+    # Pad with duplicate last frame if needed
+    while len(frames) < num_frames:
+        frames.append(frames[-1].copy())
+    
+    return frames[:num_frames]  # Ensure exactly num_frames returned
+
+
+def load_model(model_path: str, device: str = "cuda"):
+    """Load Gemma-3N model using Unsloth FastVisionModel."""
+    print(f"📦 Loading model from: {model_path}")
+    
+    # Always use FastVisionModel for proper vision support
+    try:
+        model, tokenizer = FastVisionModel.from_pretrained(
+            model_name=model_path,
+            dtype=None,  # Auto detection
+            max_seq_length=2048,
+            load_in_4bit=False,
+            trust_remote_code=True,
+        )
+        FastVisionModel.for_inference(model)  # Optimize for inference
+        print("✅ Loaded with FastVisionModel")
+    except Exception as e:
+        print(f"❌ FastVisionModel failed: {e}")
+        print("⚠ Trying AutoModel as fallback...")
+        from transformers import AutoModelForCausalLM, AutoProcessor
+        tokenizer = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+        print("✅ Loaded with AutoModel")
+    
+    model.to(device)
+    model.eval()
+    print("✅ Model ready for inference!")
+    return model, tokenizer
+
+
+def run_inference(
+    model,
+    tokenizer,
+    video_path: str,
+    prompt: str,
+    device: str = "cuda",
+    max_new_tokens: int = 256,
+    num_frames: int = 8,
+    temperature: float = 0.1,
+    top_p: float = 0.9,
+    debug: bool = False
+):
+    """Run inference on a single video."""
+    # CRITICAL: Clear all caches before processing
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    gc.collect()
+    
+    # Reset model state completely
+    if hasattr(model, 'model'):
+        if hasattr(model.model, 'past_key_values'):
+            model.model.past_key_values = None
+        if hasattr(model.model, '_past_key_values'):
+            model.model._past_key_values = None
+    
+    # Extract frames fresh for each video
+    frames = extract_frames(video_path, num_frames=num_frames)
+    
+    if debug:
+        print(f"🎞️ Extracted {len(frames)} frames from {video_path}")
+        print(f"📐 Frame sizes: {[f.size for f in frames[:3]]}...")  # Show first 3
+    
+    # Prepare messages with actual image frames - EXACT format from working example
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                *[{"type": "image", "image": frame} for frame in frames],
+                {"type": "text", "text": prompt}  # Use original prompt without modification
+            ]
+        }
+    ]
+    
+    # Tokenize with chat template
+    inputs = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt",
+    ).to(device)
+    
+    if debug:
+        print(f"📊 Input shape: input_ids={inputs.input_ids.shape}")
+        if 'pixel_values' in inputs:
+            print(f"🖼️ Pixel values shape: {inputs.pixel_values.shape}")
+        else:
+            print(f"⚠️ WARNING: No pixel_values in inputs! Vision encoding may have failed.")
+    
+    # Set unique seed per inference to break any deterministic patterns
+    unique_seed = int(time.time() * 1000000 + hash(video_path)) % (2**32)
+    torch.manual_seed(unique_seed)
+    if device == "cuda":
+        torch.cuda.manual_seed_all(unique_seed)
+    
+    start_time = time.time()
+    
+    # Generate with explicit no_grad and no cache between calls
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            temperature=0.3,  # Slight increase for variation while keeping quality
+            do_sample=True,
+            use_cache=False,  # Disable KV cache to prevent cross-inference contamination
+            pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
+        )
+    
+    end_time = time.time()
+    generation_time = end_time - start_time
+    
+    # Decode only the NEW tokens (the answer)
+    input_length = inputs.input_ids.shape[1]
+    new_tokens = outputs[0][input_length:]
+    response_text = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+    
+    if debug:
+        print(f"💬 Generated: {response_text[:200]}...")  # First 200 chars
+    
+    generated_token_count = len(new_tokens)
+    tokens_per_second = generated_token_count / generation_time if generation_time > 0 else 0
+    
+    # Aggressive cleanup
+    del inputs, outputs, new_tokens, frames, messages
+    if device == "cuda":
+        torch.cuda.empty_cache()
+    gc.collect()
+    
+    return response_text, {
+        'generated_tokens': generated_token_count,
+        'generation_time': generation_time,
+        'tokens_per_second': tokens_per_second
+    }
+
+
+def warmup_gpu(model, tokenizer, test_video: str, device: str = "cuda", max_new_tokens: int = 256):
+    """Warm up GPU with a sample video."""
+    if not os.path.exists(test_video):
+        return
+    
+    print("\n🔥 Warming up GPU...")
+    try:
+        _ = run_inference(
+            model, 
+            tokenizer, 
+            test_video, 
+            "Test prompt", 
+            device, 
+            max_new_tokens=32,  # Short warmup
+            temperature=0.1,
+            top_p=0.9
+        )
+        # Clear cache after warmup
+        if device == "cuda":
+            torch.cuda.empty_cache()
+        gc.collect()
+        print("✓ GPU warmup complete")
+    except Exception as e:
+        print(f"⚠ Warmup warning: {e}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run inference on QVED test set with Unsloth FastVisionModel")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to finetuned model or HuggingFace model name")
+    parser.add_argument("--test_json", type=str, default="dataset/qved_test.json", help="Path to test set JSON")
+    parser.add_argument("--data_path", type=str, default="videos", help="Base path for video files")
+    parser.add_argument("--output", type=str, default=None, help="Output file for predictions")
+    parser.add_argument("--device", type=str, default="cuda", help="Device to use (cuda/cpu)")
+    parser.add_argument("--max_new_tokens", type=int, default=256, help="Maximum number of new tokens")
+    parser.add_argument("--num_frames", type=int, default=8, help="Number of frames to extract per video")
+    parser.add_argument("--temperature", type=float, default=0.1, help="Sampling temperature (lower = more focused)")
+    parser.add_argument("--top_p", type=float, default=0.9, help="Nucleus sampling parameter")
+    parser.add_argument("--limit", type=int, default=None, help="Limit number of samples for testing")
+    parser.add_argument("--debug", action="store_true", help="Enable debug output")
+
+    args = parser.parse_args()
+
+    # Set default output path
+    if args.output is None:
+        model_name = Path(args.model_path).name.replace('/', '_')
+        output_dir = Path("results") / f"test_inference_{model_name}"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        args.output = str(output_dir / "test_predictions.json")
+    
+    print("=" * 60)
+    print("🎬 Gemma-3N Test Inference (Unsloth) - Vision Fixed")
+    print("=" * 60)
+    print(f"Model:           {args.model_path}")
+    print(f"Test JSON:       {args.test_json}")
+    print(f"Data path:       {args.data_path}")
+    print(f"Output:          {args.output}")
+    print(f"Device:          {args.device}")
+    print(f"Max tokens:      {args.max_new_tokens}")
+    print(f"Temperature:     {args.temperature}")
+    print(f"Top-p:           {args.top_p}")
+    print(f"Frames/video:    {args.num_frames}")
+    if args.limit:
+        print(f"Sample limit:    {args.limit}")
+    if args.debug:
+        print(f"Debug mode:      ON")
+    print("=" * 60)
+
+    # Load model
+    model, tokenizer = load_model(args.model_path, device=args.device)
+
+    # Load test data
+    print(f"\n📋 Loading test data from: {args.test_json}")
+    with open(args.test_json, 'r') as f:
+        test_data = json.load(f)
+
+    if args.limit:
+        test_data = test_data[:args.limit]
+        print(f"Limited to {args.limit} samples")
+    print(f"Total test samples: {len(test_data)}")
+
+    # GPU warmup
+    if test_data and args.device == "cuda":
+        first_video = str(Path(args.data_path) / test_data[0]['video'])
+        warmup_gpu(model, tokenizer, first_video, args.device, args.max_new_tokens)
+
+    # Run inference
+    results = []
+    throughput_stats = []
+    print("\n🎬 Running inference...")
+
+    for idx, item in enumerate(tqdm(test_data, desc="Processing videos")):
+        video_rel_path = item['video']
+        # Try the full relative path first
+        video_path = Path(args.data_path) / video_rel_path
+        
+        # If not found, try just the filename (for flat directories)
+        if not video_path.exists():
+            video_filename = Path(video_rel_path).name
+            video_path = Path(args.data_path) / video_filename
+        
+        video_path = str(video_path)
+        conversations = item['conversations']
+        prompt = conversations[0]['value']
+        ground_truth = conversations[1]['value']
+
+        try:
+            prediction, metrics = run_inference(
+                model,
+                tokenizer,
+                video_path,
+                prompt,
+                args.device,
+                args.max_new_tokens,
+                args.num_frames,
+                args.temperature,
+                args.top_p,
+                args.debug and idx < 3  # Debug first 3 samples only
+            )
+            throughput_stats.append(metrics['tokens_per_second'])
+
+            results.append({
+                "video_path": video_rel_path,
+                "prompt": prompt,
+                "ground_truth": ground_truth,
+                "prediction": prediction,
+                "generated_tokens": metrics['generated_tokens'],
+                "generation_time": round(metrics['generation_time'], 4),
+                "tokens_per_second": round(metrics['tokens_per_second'], 2),
+                "status": "success"
+            })
+            
+            if args.debug and idx < 3:
+                print(f"\n{'='*60}")
+                print(f"Sample {idx + 1}:")
+                print(f"Video: {video_rel_path}")
+                print(f"Prompt: {prompt}")
+                print(f"Ground Truth: {ground_truth}")
+                print(f"Prediction: {prediction}")
+                print(f"{'='*60}\n")
+            
+            # Clear GPU cache periodically
+            if args.device == "cuda" and (idx + 1) % 10 == 0:
+                torch.cuda.empty_cache()
+                gc.collect()
+                
+        except Exception as e:
+            results.append({
+                "video_path": video_rel_path,
+                "prompt": prompt,
+                "ground_truth": ground_truth,
+                "prediction": "",
+                "status": "error",
+                "error": str(e)
+            })
+            print(f"\n✗ Error processing {video_rel_path}: {str(e)}")
+
+    # Save results
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, 'w') as f:
+        json.dump(results, f, indent=2)
+
+    # Print summary
+    successful = sum(1 for r in results if r['status'] == 'success')
+    failed = len(results) - successful
+
+    print(f"\n{'='*60}")
+    print("✅ Inference Complete!")
+    print(f"Total: {len(results)} | Successful: {successful} | Failed: {failed}")
+    
+    if throughput_stats:
+        avg_throughput = np.mean(throughput_stats)
+        median_throughput = np.median(throughput_stats)
+        min_throughput = np.min(throughput_stats)
+        max_throughput = np.max(throughput_stats)
+        print(f"📊 Throughput (tokens/sec):")
+        print(f"    Mean: {avg_throughput:.2f} | Median: {median_throughput:.2f}")
+        print(f"    Min: {min_throughput:.2f} | Max: {max_throughput:.2f}")
+    
+    print(f"📁 Results saved to: {output_path}")
+    print(f"{'='*60}")
+
+
+if __name__ == "__main__":
+    main()

@@ -204,3 +204,5 @@ utils/credentials.json
 fine_grained_labels.json
 exercise_based_counts_full.json
 test_set_counts_full.json
+/reference
+/outputs
