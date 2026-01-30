@@ -406,6 +406,8 @@ def main():
     # Wandb configuration
     parser.add_argument("--wandb_project", type=str, default="gemma3n-qved-finetuning",
                         help="Wandb project name")
+    parser.add_argument("--wandb_entity", type=str, default="fyp-21",
+                        help="Wandb entity/team name (default: fyp-21)")
     parser.add_argument("--run_name", type=str, default=None,
                         help="Wandb run name (default: auto-generated)")
     parser.add_argument("--no_wandb", action="store_true",
@@ -431,6 +433,7 @@ def main():
         
         wandb.init(
             project=args.wandb_project,
+            entity=args.wandb_entity,
             name=args.run_name,
             config=vars(args)
         )
