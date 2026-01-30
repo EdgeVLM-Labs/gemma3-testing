@@ -558,9 +558,8 @@ def main():
         fp16=not torch.cuda.is_bf16_supported() and torch.cuda.is_available(),
         report_to=report_to,
         run_name=args.run_name if not args.no_wandb else None,
-        dataset_kwargs={'skip_prepare_dataset': True},
+        dataset_kwargs={'skip_prepare_dataset': True, 'max_seq_length': args.max_seq_length},
         remove_unused_columns=False,
-        max_seq_length=args.max_seq_length,
         dataloader_num_workers=args.dataloader_num_workers,
         seed=args.seed,
         save_total_limit=3,  # Keep only last 3 checkpoints
