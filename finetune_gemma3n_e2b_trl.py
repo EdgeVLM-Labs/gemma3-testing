@@ -540,6 +540,17 @@ def main():
     
     # Configure training
     print("\n⚙️  Configuring training...")
+    
+    # Adjust save_steps to be compatible with load_best_model_at_end
+    # save_steps must be a multiple of eval_steps when load_best_model_at_end is True
+    save_steps = args.save_steps
+    if args.eval_strategy == "steps" and val_dataset:
+        eval_steps = steps_info['eval_steps']
+        # Make save_steps a multiple of eval_steps
+        if save_steps % eval_steps != 0:
+            save_steps = eval_steps
+            print(f"  Adjusted save_steps from {args.save_steps} to {save_steps} (must be multiple of eval_steps={eval_steps})")
+    
     training_args = SFTConfig(
         output_dir=args.output_dir,
         eval_strategy=args.eval_strategy,
@@ -552,7 +563,7 @@ def main():
         num_train_epochs=args.num_train_epochs,
         warmup_ratio=args.warmup_ratio,
         logging_steps=steps_info['logging_steps'],
-        save_steps=args.save_steps,
+        save_steps=save_steps,
         save_strategy="steps",
         bf16=torch.cuda.is_bf16_supported(),
         fp16=not torch.cuda.is_bf16_supported() and torch.cuda.is_available(),
