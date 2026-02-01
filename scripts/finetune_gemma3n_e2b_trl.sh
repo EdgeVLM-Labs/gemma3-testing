@@ -62,7 +62,7 @@ EPOCHS="${EPOCHS:-3}"                     # 3 epochs
 LEARNING_RATE="${LEARNING_RATE:-2e-4}"   # 2e-4 LR
 BATCH_SIZE="${BATCH_SIZE:-8}"            # Batch size 8
 GRAD_ACCUM="${GRAD_ACCUM:-4}"            # Gradient accumulation 4 (effective batch size 32)
-MAX_SEQ_LEN="${MAX_SEQ_LEN:-2048}"       # Max sequence length 2048
+MAX_SEQ_LEN="${MAX_SEQ_LEN:-1024}"       # Max sequence length 1024 (memory efficient for 80GB GPU)
 
 # LoRA configuration
 LORA_R="${LORA_R:-64}"                   # LoRA r=64
@@ -74,7 +74,7 @@ WARMUP_RATIO="${WARMUP_RATIO:-0.05}"     # Warmup ratio 0.05
 SAVE_STEPS="${SAVE_STEPS:-30}"           # Save every 30 steps
 EVAL_STRATEGY="${EVAL_STRATEGY:-steps}"  # Evaluate by steps
 DATALOADER_WORKERS="${DATALOADER_WORKERS:-2}"  # 2 workers
-EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-8}"  # Eval batch size 8
+EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-8}"  # Eval batch size 8 (memory efficient)
 
 # Wandb configuration
 WANDB_PROJECT="${WANDB_PROJECT:-gemma3n-qved-finetuning}"

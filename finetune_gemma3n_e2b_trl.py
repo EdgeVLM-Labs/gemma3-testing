@@ -379,8 +379,8 @@ def main():
                         help="Evaluation batch size per device (default: 8)")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=4,
                         help="Gradient accumulation steps (default: 4)")
-    parser.add_argument("--max_seq_length", type=int, default=2048,
-                        help="Maximum sequence length (default: 2048)")
+    parser.add_argument("--max_seq_length", type=int, default=1024,
+                        help="Maximum sequence length (default: 1024)")
     
     # LoRA configuration
     parser.add_argument("--lora_r", type=int, default=64,
@@ -474,11 +474,14 @@ def main():
     try:
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         
+        # Enable memory-efficient loading with CPU offload if needed
         model = Gemma3nForConditionalGeneration.from_pretrained(
             args.model_path,
             device_map="auto",
             torch_dtype=dtype,
-            trust_remote_code=True
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,
+            max_memory={0: "75GiB", "cpu": "100GiB"}  # Reserve 5GB GPU memory headroom
         )
         
         processor = AutoProcessor.from_pretrained(
