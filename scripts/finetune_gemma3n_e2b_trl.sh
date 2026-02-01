@@ -57,24 +57,24 @@ VIDEO_PATH="${VIDEO_PATH:-videos}"
 OUTPUT_DIR="${OUTPUT_DIR:-./outputs/gemma3n-e2b-qved-ft-$(date +%Y%m%d_%H%M%S)}"
 
 # Training hyperparameters
-NUM_FRAMES="${NUM_FRAMES:-8}"              # Extract 8 frames per video
-EPOCHS="${EPOCHS:-3}"                      # 3 epochs
-LEARNING_RATE="${LEARNING_RATE:-2e-4}"    # 2e-4 LR
-BATCH_SIZE="${BATCH_SIZE:-8}"             # Batch size 8
-GRAD_ACCUM="${GRAD_ACCUM:-4}"             # Gradient accumulation 4
-MAX_SEQ_LEN="${MAX_SEQ_LEN:-2048}"        # Max sequence length 2048
+NUM_FRAMES="${NUM_FRAMES:-8}"            # Extract 8 frames per video
+EPOCHS="${EPOCHS:-3}"                     # 3 epochs
+LEARNING_RATE="${LEARNING_RATE:-2e-4}"   # 2e-4 LR
+BATCH_SIZE="${BATCH_SIZE:-8}"            # Batch size 8
+GRAD_ACCUM="${GRAD_ACCUM:-4}"            # Gradient accumulation 4 (effective batch size 32)
+MAX_SEQ_LEN="${MAX_SEQ_LEN:-2048}"       # Max sequence length 2048
 
 # LoRA configuration
-LORA_R="${LORA_R:-64}"                    # LoRA r=64
-LORA_ALPHA="${LORA_ALPHA:-128}"           # LoRA alpha=128
-LORA_DROPOUT="${LORA_DROPOUT:-0.05}"      # LoRA dropout=0.05
+LORA_R="${LORA_R:-64}"                   # LoRA r=64
+LORA_ALPHA="${LORA_ALPHA:-128}"          # LoRA alpha=128
+LORA_DROPOUT="${LORA_DROPOUT:-0.05}"     # LoRA dropout=0.05
 
 # Training configuration
-WARMUP_RATIO="${WARMUP_RATIO:-0.05}"      # Warmup ratio 0.05
-SAVE_STEPS="${SAVE_STEPS:-30}"            # Save every 30 steps
-EVAL_STRATEGY="${EVAL_STRATEGY:-steps}"   # Evaluate by steps
+WARMUP_RATIO="${WARMUP_RATIO:-0.05}"     # Warmup ratio 0.05
+SAVE_STEPS="${SAVE_STEPS:-30}"           # Save every 30 steps
+EVAL_STRATEGY="${EVAL_STRATEGY:-steps}"  # Evaluate by steps
 DATALOADER_WORKERS="${DATALOADER_WORKERS:-2}"  # 2 workers
-EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-8}"   # Eval batch size 8
+EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-8}"  # Eval batch size 8
 
 # Wandb configuration
 WANDB_PROJECT="${WANDB_PROJECT:-gemma3n-qved-finetuning}"
@@ -292,6 +292,10 @@ ${CMD}
 EOF
 
 echo -e "${BLUE}Configuration saved to: ${OUTPUT_DIR}/config.txt${NC}\n"
+
+# Set PyTorch memory allocation optimization
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+echo -e "${GREEN}✓ PyTorch memory optimization enabled (expandable_segments:True)${NC}\n"
 
 # Run the training command
 eval ${CMD}

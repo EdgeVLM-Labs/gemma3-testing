@@ -559,6 +559,7 @@ def main():
         per_device_eval_batch_size=args.per_device_eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         gradient_checkpointing=args.gradient_checkpointing,
+        gradient_checkpointing_kwargs={"use_reentrant": False},  # More memory efficient
         learning_rate=args.learning_rate,
         num_train_epochs=args.num_train_epochs,
         warmup_ratio=args.warmup_ratio,
@@ -576,6 +577,8 @@ def main():
         save_total_limit=3,  # Keep only last 3 checkpoints
         load_best_model_at_end=True if args.eval_strategy != "no" and val_dataset else False,
         metric_for_best_model="eval_loss" if args.eval_strategy != "no" and val_dataset else None,
+        optim="paged_adamw_8bit",  # Use 8-bit optimizer to save memory
+        max_grad_norm=1.0,  # Gradient clipping for stability
     )
     
     # Create collate function
