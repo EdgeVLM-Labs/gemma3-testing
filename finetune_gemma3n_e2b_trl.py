@@ -373,12 +373,12 @@ def main():
                         help="Number of training epochs (default: 3)")
     parser.add_argument("--learning_rate", type=float, default=2e-4,
                         help="Learning rate (default: 2e-4)")
-    parser.add_argument("--per_device_train_batch_size", type=int, default=8,
-                        help="Training batch size per device (default: 8)")
-    parser.add_argument("--per_device_eval_batch_size", type=int, default=8,
-                        help="Evaluation batch size per device (default: 8)")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=4,
-                        help="Gradient accumulation steps (default: 4)")
+    parser.add_argument("--per_device_train_batch_size", type=int, default=2,
+                        help="Training batch size per device (default: 2)")
+    parser.add_argument("--per_device_eval_batch_size", type=int, default=2,
+                        help="Evaluation batch size per device (default: 2)")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=16,
+                        help="Gradient accumulation steps (default: 16)")
     parser.add_argument("--max_seq_length", type=int, default=2048,
                         help="Maximum sequence length (default: 2048)")
     
