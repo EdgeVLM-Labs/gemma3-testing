@@ -60,8 +60,8 @@ OUTPUT_DIR="${OUTPUT_DIR:-./outputs/gemma3n-e2b-qved-ft-$(date +%Y%m%d_%H%M%S)}"
 NUM_FRAMES="${NUM_FRAMES:-8}"            # Extract 8 frames per video
 EPOCHS="${EPOCHS:-3}"                     # 3 epochs
 LEARNING_RATE="${LEARNING_RATE:-2e-4}"   # 2e-4 LR
-BATCH_SIZE="${BATCH_SIZE:-8}"            # Batch size 8
-GRAD_ACCUM="${GRAD_ACCUM:-4}"            # Gradient accumulation 4 (effective batch size 32)
+BATCH_SIZE="${BATCH_SIZE:-4}"            # Batch size 4 (balanced for 80GB GPU)
+GRAD_ACCUM="${GRAD_ACCUM:-8}"            # Gradient accumulation 8 (effective batch size 32)
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-1024}"       # Max sequence length 1024 (memory efficient for 80GB GPU)
 
 # LoRA configuration
@@ -74,7 +74,7 @@ WARMUP_RATIO="${WARMUP_RATIO:-0.05}"     # Warmup ratio 0.05
 SAVE_STEPS="${SAVE_STEPS:-30}"           # Save every 30 steps
 EVAL_STRATEGY="${EVAL_STRATEGY:-steps}"  # Evaluate by steps
 DATALOADER_WORKERS="${DATALOADER_WORKERS:-2}"  # 2 workers
-EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-8}"  # Eval batch size 8 (memory efficient)
+EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-4}"  # Eval batch size 4 (memory efficient)
 
 # Wandb configuration
 WANDB_PROJECT="${WANDB_PROJECT:-gemma3n-qved-finetuning}"
