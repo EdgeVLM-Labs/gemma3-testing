@@ -8,14 +8,14 @@ USAGE:
         python finetune_gemma3n_e2b_trl.py \
             --train_json dataset/qved_train.json \
             --val_json dataset/qved_val.json \
-            --data_path videos/ \
+            --data_path dataset/ \
             --output_dir ./outputs/gemma3n-e2b-qved-ft
 
     Custom hyperparameters:
         python finetune_gemma3n_e2b_trl.py \
             --train_json dataset/qved_train.json \
             --val_json dataset/qved_val.json \
-            --data_path videos/ \
+            --data_path dataset/ \
             --output_dir ./outputs/custom-run \
             --num_train_epochs 5 \
             --learning_rate 3e-4 \
@@ -25,7 +25,7 @@ USAGE:
         python finetune_gemma3n_e2b_trl.py \
             --train_json dataset/qved_train.json \
             --val_json dataset/qved_val.json \
-            --data_path videos/ \
+            --data_path dataset/ \
             --output_dir ./outputs/run1 \
             --wandb_project "gemma3n-qved-finetuning" \
             --run_name "gemma3n-e2b-lr2e4-r64"
@@ -34,7 +34,7 @@ USAGE:
         python finetune_gemma3n_e2b_trl.py \
             --train_json dataset/qved_train.json \
             --val_json dataset/qved_val.json \
-            --data_path videos/ \
+            --data_path dataset/ \
             --output_dir ./outputs/gemma3n-e2b-qved-ft \
             --resume_from_checkpoint ./outputs/gemma3n-e2b-qved-ft/checkpoint-30
 
@@ -361,7 +361,7 @@ def main():
                         help="Path to training JSON file")
     parser.add_argument("--val_json", type=str, default=None,
                         help="Path to validation JSON file")
-    parser.add_argument("--data_path", type=str, default="videos",
+    parser.add_argument("--data_path", type=str, default="dataset",
                         help="Base path for video files")
     parser.add_argument("--output_dir", type=str, required=True,
                         help="Output directory for checkpoints and model")
