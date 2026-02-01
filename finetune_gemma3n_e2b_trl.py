@@ -337,8 +337,8 @@ def calculate_steps(total_samples: int, batch_size: int, gradient_accumulation: 
     steps_per_epoch = math.ceil(total_samples / effective_batch_size)
     total_steps = steps_per_epoch * num_epochs
     
-    # Calculate logging steps (log ~20 times per epoch)
-    logging_steps = max(1, steps_per_epoch // 20)
+    # Fixed logging steps for performance
+    logging_steps = 10
     
     # Calculate eval steps (eval ~5 times per epoch)
     eval_steps = max(1, steps_per_epoch // 5)
