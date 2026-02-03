@@ -2,6 +2,13 @@
 """
 Gemma-3N QVED Test Inference Script (Transformers) - FIXED
 Uses native transformers library for physiotherapy exercise video analysis
+
+bash scripts/run_inference_transformers.sh \
+  --hf_repo EdgeVLM-Labs/gemma3n-e2b-qved-ft-trans \
+  --test_json dataset/qved_test.json \
+  --data_path dataset \
+  --limit 200
+
 """
 
 import argparse
