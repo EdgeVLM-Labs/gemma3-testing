@@ -92,32 +92,32 @@ def check_exercise_match(ground_truth: str, prediction: str) -> bool:
     return gt_exercise == pred_exercise
 
 
-def load_llm_judge():
-    """Load Mixtral-Instruct-0.1 model for LM-as-judge evaluation."""
-    print("\nLoading LLM Judge (Mixtral-8x7B-Instruct-v0.1)...")
-    print("This may take a few minutes on first run...")
+# def load_llm_judge():
+#     """Load Mixtral-Instruct-0.1 model for LM-as-judge evaluation."""
+#     print("\nLoading LLM Judge (Mixtral-8x7B-Instruct-v0.1)...")
+#     print("This may take a few minutes on first run...")
 
-    try:
-        model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+#     try:
+#         model_name = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 
-        # Load tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+#         # Load tokenizer
+#         tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-        # Load model with optimizations
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16,
-            device_map="auto",
-            load_in_8bit=True  # Use 8-bit quantization to reduce memory
-        )
+#         # Load model with optimizations
+#         model = AutoModelForCausalLM.from_pretrained(
+#             model_name,
+#             torch_dtype=torch.float16,
+#             device_map="auto",
+#             load_in_8bit=True  # Use 8-bit quantization to reduce memory
+#         )
 
-        print("✓ LLM Judge loaded successfully")
-        return tokenizer, model
+#         print("✓ LLM Judge loaded successfully")
+#         return tokenizer, model
 
-    except Exception as e:
-        print(f"⚠ Warning: Could not load LLM judge: {e}")
-        print("  LLM Accuracy scores will be skipped")
-        return None, None
+#     except Exception as e:
+#         print(f"⚠ Warning: Could not load LLM judge: {e}")
+#         print("  LLM Accuracy scores will be skipped")
+#         return None, None
 
 
 def compute_llm_accuracy_score(ground_truth: str, prediction: str, tokenizer, model) -> float:
@@ -228,10 +228,10 @@ def create_excel_report(results: List[Dict], output_path: str, use_bert: bool = 
             use_bert = False
 
     # Load LLM judge if requested
-    llm_tokenizer = None
-    llm_model = None
-    if use_llm_judge:
-        llm_tokenizer, llm_model = load_llm_judge()
+    # llm_tokenizer = None
+    # llm_model = None
+    # if use_llm_judge:
+    #     llm_tokenizer, llm_model = load_llm_judge()
 
     # Create workbook
     wb = openpyxl.Workbook()
@@ -269,7 +269,7 @@ def create_excel_report(results: List[Dict], output_path: str, use_bert: bool = 
     headers.extend([
         "METEOR Score",
         "ROUGE-L Score",
-        "LLM Accuracy (1-5)",
+        # "LLM Accuracy (1-5)",
         "Exercise Identified",
         "Status",
         "Error"
@@ -302,10 +302,10 @@ def create_excel_report(results: List[Dict], output_path: str, use_bert: bool = 
 
     ws.column_dimensions[get_column_letter(col_idx)].width = 18      # METEOR Score
     ws.column_dimensions[get_column_letter(col_idx + 1)].width = 18  # ROUGE-L Score
-    ws.column_dimensions[get_column_letter(col_idx + 2)].width = 18  # LLM Accuracy
-    ws.column_dimensions[get_column_letter(col_idx + 3)].width = 18  # Exercise Identified
-    ws.column_dimensions[get_column_letter(col_idx + 4)].width = 12  # Status
-    ws.column_dimensions[get_column_letter(col_idx + 5)].width = 40  # Error
+    # ws.column_dimensions[get_column_letter(col_idx + 2)].width = 18  # LLM Accuracy
+    ws.column_dimensions[get_column_letter(col_idx + 2)].width = 18  # Exercise Identified
+    ws.column_dimensions[get_column_letter(col_idx + 3)].width = 12  # Status
+    ws.column_dimensions[get_column_letter(col_idx + 4)].width = 40  # Error
 
     # Freeze header row
     ws.freeze_panes = "A2"
@@ -332,7 +332,7 @@ def create_excel_report(results: List[Dict], output_path: str, use_bert: bool = 
     bert_scores = []
     meteor_scores = []
     rouge_scores = []
-    llm_accuracy_scores = []
+    # llm_accuracy_scores = []
     exercise_matches = []
     exercise_stats = {}  # Track per-exercise statistics: {exercise_name: {'correct': x, 'total': y}}
 
@@ -358,10 +358,10 @@ def create_excel_report(results: List[Dict], output_path: str, use_bert: bool = 
         rouge_scores.append(rouge_sim)
 
         # Compute LLM accuracy (1-5 scale)
-        llm_score = 0.0
-        if use_llm_judge and llm_tokenizer and llm_model:
-            llm_score = compute_llm_accuracy_score(ground_truth, prediction, llm_tokenizer, llm_model)
-            llm_accuracy_scores.append(llm_score)
+        # llm_score = 0.0
+        # if use_llm_judge and llm_tokenizer and llm_model:
+        #     llm_score = compute_llm_accuracy_score(ground_truth, prediction, llm_tokenizer, llm_model)
+        #     llm_accuracy_scores.append(llm_score)
 
         exercise_match = check_exercise_match(ground_truth, prediction)
         exercise_matches.append(exercise_match)
@@ -408,10 +408,10 @@ def create_excel_report(results: List[Dict], output_path: str, use_bert: bool = 
         col += 1
 
         # LLM Accuracy (1-5 scale)
-        llm_col_idx = col
-        if use_llm_judge and llm_score > 0:
-            ws.cell(row=row, column=col).value = round(llm_score, 2)
-        col += 1
+        # llm_col_idx = col
+        # if use_llm_judge and llm_score > 0:
+        #     ws.cell(row=row, column=col).value = round(llm_score, 2)
+        # col += 1
 
         exercise_col_idx = col
         ws.cell(row=row, column=col).value = "TRUE" if exercise_match else "FALSE"
@@ -455,14 +455,14 @@ def create_excel_report(results: List[Dict], output_path: str, use_bert: bool = 
                 else:
                     cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
 
-            if use_llm_judge and c == llm_col_idx:  # LLM Accuracy column
-                score = llm_score
-                if score >= LLM_GREEN_THRESHOLD:  # 4-5: Excellent/Good
-                    cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-                elif score >= LLM_YELLOW_THRESHOLD:  # 3: Moderate
-                    cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
-                elif score > 0:  # 1-2: Poor/Very Poor
-                    cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+            # if use_llm_judge and c == llm_col_idx:  # LLM Accuracy column
+            #     score = llm_score
+            #     if score >= LLM_GREEN_THRESHOLD:  # 4-5: Excellent/Good
+            #         cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+            #     elif score >= LLM_YELLOW_THRESHOLD:  # 3: Moderate
+            #         cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+            #     elif score > 0:  # 1-2: Poor/Very Poor
+            #         cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
 
             if c == exercise_col_idx:  # Exercise Identified column
                 if exercise_match:
@@ -540,22 +540,22 @@ def create_excel_report(results: List[Dict], output_path: str, use_bert: bool = 
             ["", ""],
         ])
 
-    if llm_accuracy_scores:
-        llm_green = sum(1 for s in llm_accuracy_scores if s >= LLM_GREEN_THRESHOLD)
-        llm_yellow = sum(1 for s in llm_accuracy_scores if LLM_YELLOW_THRESHOLD <= s < LLM_GREEN_THRESHOLD)
-        llm_red = sum(1 for s in llm_accuracy_scores if s > 0 and s < LLM_YELLOW_THRESHOLD)
-        summary_data.extend([
-            ["LLM Accuracy (1-5)", ""],
-            ["Mean", round(np.mean(llm_accuracy_scores), 2)],
-            ["Median", round(np.median(llm_accuracy_scores), 2)],
-            ["Std Dev", round(np.std(llm_accuracy_scores), 2)],
-            ["Min", round(np.min(llm_accuracy_scores), 2)],
-            ["Max", round(np.max(llm_accuracy_scores), 2)],
-            [f"Green (≥{LLM_GREEN_THRESHOLD})", llm_green],
-            [f"Yellow ({LLM_YELLOW_THRESHOLD}-{LLM_GREEN_THRESHOLD})", llm_yellow],
-            [f"Red (<{LLM_YELLOW_THRESHOLD})", llm_red],
-            ["", ""],
-        ])
+    # if llm_accuracy_scores:
+    #     llm_green = sum(1 for s in llm_accuracy_scores if s >= LLM_GREEN_THRESHOLD)
+    #     llm_yellow = sum(1 for s in llm_accuracy_scores if LLM_YELLOW_THRESHOLD <= s < LLM_GREEN_THRESHOLD)
+    #     llm_red = sum(1 for s in llm_accuracy_scores if s > 0 and s < LLM_YELLOW_THRESHOLD)
+    #     summary_data.extend([
+    #         ["LLM Accuracy (1-5)", ""],
+    #         ["Mean", round(np.mean(llm_accuracy_scores), 2)],
+    #         ["Median", round(np.median(llm_accuracy_scores), 2)],
+    #         ["Std Dev", round(np.std(llm_accuracy_scores), 2)],
+    #         ["Min", round(np.min(llm_accuracy_scores), 2)],
+    #         ["Max", round(np.max(llm_accuracy_scores), 2)],
+    #         [f"Green (≥{LLM_GREEN_THRESHOLD})", llm_green],
+    #         [f"Yellow ({LLM_YELLOW_THRESHOLD}-{LLM_GREEN_THRESHOLD})", llm_yellow],
+    #         [f"Red (<{LLM_YELLOW_THRESHOLD})", llm_red],
+    #         ["", ""],
+    #     ])
 
     if exercise_matches:
         exercise_correct = sum(1 for match in exercise_matches if match)
@@ -798,11 +798,11 @@ def create_excel_report(results: List[Dict], output_path: str, use_bert: bool = 
         print(f"  Median: {np.median(rouge_scores):.4f}")
         print(f"  Std Dev: {np.std(rouge_scores):.4f}")
 
-    if llm_accuracy_scores:
-        print(f"\nLLM Accuracy (1-5 scale):")
-        print(f"  Mean: {np.mean(llm_accuracy_scores):.2f}")
-        print(f"  Median: {np.median(llm_accuracy_scores):.2f}")
-        print(f"  Std Dev: {np.std(llm_accuracy_scores):.2f}")
+    # if llm_accuracy_scores:
+    #     print(f"\nLLM Accuracy (1-5 scale):")
+    #     print(f"  Mean: {np.mean(llm_accuracy_scores):.2f}")
+    #     print(f"  Median: {np.median(llm_accuracy_scores):.2f}")
+    #     print(f"  Std Dev: {np.std(llm_accuracy_scores):.2f}")
 
     if exercise_matches:
         exercise_correct = sum(1 for match in exercise_matches if match)
@@ -822,11 +822,11 @@ def main():
                         help="Output Excel file path (default: same directory as predictions)")
     parser.add_argument("--no-bert", action="store_true",
                         help="Skip BERT similarity (faster, uses only TF-IDF)")
-    parser.add_argument("--no-llm-judge", action="store_true",
-                        help="Skip LLM judge evaluation (faster, skips Mixtral scoring)")
-    parser.add_argument("--include-base-model", action="store_true",
-                        help="Include base model predictions (requires user confirmation)")
-    parser.add_argument("--base-model", type=str, default="Amshaker/Mobile-VideoGPT-0.5B",
+    # parser.add_argument("--no-llm-judge", action="store_true",
+    #                     help="Skip LLM judge evaluation (faster, skips Mixtral scoring)")
+    # parser.add_argument("--include-base-model", action="store_true",
+    #                     help="Include base model predictions (requires user confirmation)")
+    parser.add_argument("--base-model", type=str, default="google/gemma-3n-E2B-it",
                         help="Base model path/ID for comparison")
     parser.add_argument("--test-json", type=str,
                         help="Test JSON file for base model inference")
@@ -868,52 +868,52 @@ def main():
 
     # Handle base model predictions
     base_predictions = None
-    if args.include_base_model:
-        print("\n" + "="*60)
-        print("BASE MODEL INFERENCE")
-        print("="*60)
-        print("⚠ Warning: This will run inference on all test samples")
-        print("  using the base (non-finetuned) model.")
-        print("  This may take significant time and compute resources.")
-        print("="*60)
+    # if args.include_base_model:
+    #     print("\n" + "="*60)
+    #     print("BASE MODEL INFERENCE")
+    #     print("="*60)
+    #     print("⚠ Warning: This will run inference on all test samples")
+    #     print("  using the base (non-finetuned) model.")
+    #     print("  This may take significant time and compute resources.")
+    #     print("="*60)
 
-        response = input("\nProceed with base model inference? (yes/no): ").strip().lower()
+    #     response = input("\nProceed with base model inference? (yes/no): ").strip().lower()
 
-        if response in ['yes', 'y', 'ok']:
-            # Import base model inference utility
-            try:
-                import torch
-                from utils.base_model_inference import get_base_model_predictions
+    #     if response in ['yes', 'y', 'ok']:
+    #         # Import base model inference utility
+    #         try:
+    #             import torch
+    #             from utils.base_model_inference import get_base_model_predictions
 
-                # Load test data
-                if not args.test_json:
-                    print("❌ Error: --test-json required for base model inference")
-                    return 1
+    #             # Load test data
+    #             if not args.test_json:
+    #                 print("❌ Error: --test-json required for base model inference")
+    #                 return 1
 
-                with open(args.test_json, 'r') as f:
-                    test_data = json.load(f)
+    #             with open(args.test_json, 'r') as f:
+    #                 test_data = json.load(f)
 
-                # Run base model inference
-                base_predictions = get_base_model_predictions(
-                    test_data,
-                    base_model=args.base_model,
-                    data_path=args.data_path,
-                    device="cuda" if torch.cuda.is_available() else "cpu"
-                )
+    #             # Run base model inference
+    #             base_predictions = get_base_model_predictions(
+    #                 test_data,
+    #                 base_model=args.base_model,
+    #                 data_path=args.data_path,
+    #                 device="cuda" if torch.cuda.is_available() else "cpu"
+    #             )
 
-                print("✓ Base model predictions obtained")
+    #             print("✓ Base model predictions obtained")
 
-            except Exception as e:
-                print(f"❌ Error during base model inference: {e}")
-                print("  Continuing without base model predictions...")
-                base_predictions = None
-        else:
-            print("Skipping base model inference.")
+    #         except Exception as e:
+    #             print(f"❌ Error during base model inference: {e}")
+    #             print("  Continuing without base model predictions...")
+    #             base_predictions = None
+    #     else:
+    #         print("Skipping base model inference.")
 
     # Generate report
     try:
         create_excel_report(results, args.output, use_bert=not args.no_bert,
-                           base_predictions=base_predictions, use_llm_judge=not args.no_llm_judge)
+                           base_predictions=base_predictions, use_llm_judge=False)
         print(f"\n✅ Report successfully saved to: {args.output}")
         return 0
     except Exception as e:

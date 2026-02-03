@@ -195,11 +195,11 @@ def save_predictions(predictions: List[dict], output_path: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Gemma-3N QVED Test Inference (Transformers)")
-    parser.add_argument("--model_path", type=str, default="google/gemma-3-4b-it",
+    parser.add_argument("--model_path", type=str, default="google/gemma-3n-E2B-it",
                         help="Path to model or HuggingFace model ID")
     parser.add_argument("--test_json", type=str, required=True,
                         help="Path to QVED test set JSON")
-    parser.add_argument("--data_path", type=str, default="videos",
+    parser.add_argument("--data_path", type=str, default="dataset",
                         help="Base path for exercise video files")
     parser.add_argument("--output", type=str, required=True,
                         help="Output path for predictions JSON")
