@@ -89,7 +89,7 @@ The finetuning script uses the following hyperparameters (optimized for small da
 
 | Parameter             | Value                           | Description                   |
 | --------------------- | ------------------------------- | ----------------------------- |
-| Base Model            | `Amshaker/Mobile-VideoGPT-0.5B` | Pre-trained checkpoint        |
+| Base Model            | `google/gemma-3n-E2B-it`        | Pre-trained checkpoint        |
 | Epochs                | 10                              | More epochs for small dataset |
 | Learning Rate         | 1e-4                            | Conservative for stability    |
 | MM Projector LR       | 2e-5                            | Lower for projection layers   |
