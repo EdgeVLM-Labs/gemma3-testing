@@ -90,14 +90,11 @@ def get_video_inference(
     prompt: str,
     model,
     processor,
-    max_new_tokens: int = 256,
-    frames_dir: str = "temp_frames",
-    video_identifier: str = "video"
+    max_new_tokens: int = 256
 ) -> str:
     """
     Run inference on physiotherapy exercise video frames using Gemma-3n model.
     Uses proper chat template format for Gemma3nForConditionalGeneration.
-    Saves extracted frames to disk before processing.
     
     Args:
         video_frames: List of (frame, timestamp) tuples
@@ -105,8 +102,6 @@ def get_video_inference(
         model: Loaded Gemma3nForConditionalGeneration model
         processor: AutoProcessor for Gemma 3n
         max_new_tokens: Maximum tokens to generate
-        frames_dir: Directory to save extracted frames
-        video_identifier: Identifier for the video (used in filenames)
     
     Returns:
         Model response string
@@ -114,19 +109,8 @@ def get_video_inference(
     if not video_frames:
         return "[ERROR: No frames extracted]"
     
-    # Create directory for saving frames
-    os.makedirs(frames_dir, exist_ok=True)
-    
-    # Extract images from video frames and save them
-    images = []
-    for idx, (img, timestamp) in enumerate(video_frames):
-        # Save frame to disk
-        frame_filename = f"{video_identifier}_frame_{idx:03d}_t{timestamp:.2f}s.jpg"
-        frame_path = os.path.join(frames_dir, frame_filename)
-        img.save(frame_path, quality=95)
-        images.append(img)
-    
-    print(f"  💾 Saved {len(images)} frames to {frames_dir}")
+    # Extract images from video frames
+    images = [img for img, timestamp in video_frames]
     
     try:
         # Construct messages in the proper Gemma 3n chat format
@@ -287,9 +271,6 @@ def main():
     print("\n🔍 Running inference on exercise videos...")
     predictions = []
     
-    # Create a temporary directory for frames
-    frames_temp_dir = os.path.join(os.path.dirname(args.output), "temp_frames")
-    
     for idx, sample in enumerate(tqdm(test_data, desc="Processing videos")):
         # Handle both dataset formats
         video_path = sample.get("video", "")
@@ -324,11 +305,9 @@ def main():
             # Extract frames and run inference
             frames = extract_frames(full_path, args.num_frames)
             if frames:
-                # Create a clean identifier from video path
-                video_id = os.path.splitext(os.path.basename(video_path))[0]
                 prediction = get_video_inference(
                     frames, question, model, processor, 
-                    args.max_new_tokens, frames_temp_dir, video_id
+                    args.max_new_tokens
                 )
             else:
                 prediction = "[ERROR: Failed to extract frames from video]"
@@ -343,13 +322,6 @@ def main():
     # Save predictions
     print(f"\n💾 Saving predictions...")
     save_predictions(predictions, args.output)
-    
-    # Clean up temporary frames directory
-    if os.path.exists(frames_temp_dir):
-        try:
-            os.rmdir(frames_temp_dir)
-        except:
-            pass
     
     print("\n" + "=" * 60)
     print("✅ Inference complete!")
