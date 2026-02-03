@@ -48,9 +48,9 @@ OUTPUT_VAL_JSON = LOCAL_DIR / "qved_val.json"
 OUTPUT_TEST_JSON = LOCAL_DIR / "qved_test.json"
 
 # Dataset split ratios
-TRAIN_RATIO = 0.60
-VAL_RATIO = 0.20
-TEST_RATIO = 0.20
+TRAIN_RATIO = 0.0
+VAL_RATIO = 0.0
+TEST_RATIO = 1.0
 
 # Cleaning thresholds
 MIN_FRAME_WIDTH = 640
