@@ -231,19 +231,19 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "📦 Ensuring HuggingFace CLI compatibility..."
     # Install with version constraint to match transformers 4.56.2
     pip install 'huggingface_hub>=0.34.0,<1.0' --quiet
-    
+
     echo ""
     echo "🤗 HuggingFace Login"
     echo "Get your token from: https://huggingface.co/settings/tokens"
     echo ""
     huggingface-cli login
-    
+
     echo ""
     echo "📊 Weights & Biases Login"
     echo "Get your API key from: https://wandb.ai/authorize"
     echo ""
     wandb login
-    
+
     echo ""
     echo "✅ Authentication complete!"
 else

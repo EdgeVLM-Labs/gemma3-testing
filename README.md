@@ -1409,7 +1409,3 @@ See [LICENSE](LICENSE) for details.
 - **Documentation:** [docs/FINETUNE_GUIDE.md](docs/FINETUNE_GUIDE.md)
 - **Issues:** [GitHub Issues](https://github.com/EdgeVLM-Labs/gemma3-testing/issues)
 - **Discussions:** [GitHub Discussions](https://github.com/EdgeVLM-Labs/gemma3-testing/discussions)
-
----
-
-**Made with ❤️ by EdgeVLM Labs**
