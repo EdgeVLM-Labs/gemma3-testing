@@ -1,25 +1,47 @@
 #!/bin/bash
 
-# QVED Test Inference and Evaluation Report Generator
+# Gemma-3N Test Inference and Evaluation Report Generator (Unsloth)
 # This script runs inference on the test set and generates an evaluation report
+#
+# USAGE EXAMPLES:
+#
+# 1. Quick test with HuggingFace model:
+#    bash scripts/run_inference.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --data_path videos --limit 10
+#
+# 2. Using local fine-tuned model:
+#    bash scripts/run_inference.sh --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit --test_json dataset/qved_test.json --data_path videos
+#
+# 3. Full inference with custom settings:
+#    bash scripts/run_inference.sh \
+#      --model_path outputs/gemma3n_finetune_merged_16bit \
+#      --test_json dataset/qved_test.json \
+#      --data_path videos \
+#      --num_frames 16 \
+#      --max_new_tokens 256 \
+#      --limit 100
+#
+# 4. Fast evaluation (skip BERT similarity):
+#    bash scripts/run_inference.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --no-bert
+#
+# For help: bash scripts/run_inference.sh --help
 
 set -e  # Exit on error
 
 echo "========================================="
-echo "QVED Test Inference & Evaluation"
+echo "Gemma-3N Test Inference & Evaluation"
 echo "========================================="
 
 # Default values
 MODEL_PATH=""
 HF_REPO=""
 TEST_JSON="dataset/qved_test.json"
-DATA_PATH="dataset"
+DATA_PATH="videos"
 OUTPUT_DIR=""
 DEVICE="cuda"
-MAX_NEW_TOKENS=64
-BASE_MODEL="Amshaker/Mobile-VideoGPT-0.5B"
-LIMIT=""
-NO_BERT=""
+MAX_NEW_TOKENS=256
+NUM_FRAMES=8
+LIMIT="50"
+NO_BERT=""  # Enable BERT by default for evaluation
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -52,8 +74,8 @@ while [[ $# -gt 0 ]]; do
             MAX_NEW_TOKENS="$2"
             shift 2
             ;;
-        --base_model)
-            BASE_MODEL="$2"
+        --num_frames)
+            NUM_FRAMES="$2"
             shift 2
             ;;
         --limit)
@@ -64,32 +86,28 @@ while [[ $# -gt 0 ]]; do
             NO_BERT="--no-bert"
             shift
             ;;
+        --use-bert)
+            NO_BERT=""
+            shift
+            ;;
         -h|--help)
             echo "Usage: bash scripts/run_inference.sh [--model_path <path> | --hf_repo <repo>] [options]"
             echo ""
-            echo "Model Source (one required):"
-            echo "  --model_path      Path to local finetuned model checkpoint"
-            echo "  --hf_repo         HuggingFace repository URL/ID (e.g., EdgeVLM-Labs/qved-finetune-20241128)"
+            echo "Model Source:"
+            echo "  --model_path      Path to local finetuned model checkpoint (default: unsloth/gemma-3n-E2B-it)"
+            echo "  --hf_repo         HuggingFace repository ID (alternative to model_path)"
             echo ""
             echo "Optional:"
             echo "  --test_json       Path to test set JSON (default: dataset/qved_test.json)"
-            echo "  --data_path       Base path for video files (default: dataset)"
-            echo "  --output_dir      Output directory for results (default: model directory or results/hf_inference)"
+            echo "  --data_path       Base path for video files (default: videos)"
+            echo "  --output_dir      Output directory for results (default: auto-generated)"
             echo "  --device          Device to use: cuda/cpu (default: cuda)"
-            echo "  --max_new_tokens  Max tokens to generate (default: 64)"
-            echo "  --base_model      Base model for LoRA adapters (default: Amshaker/Mobile-VideoGPT-0.5B)"
-            echo "  --limit           Limit number of samples (for testing)"
+            echo "  --max_new_tokens  Max tokens to generate (default: 256)"
+            echo "  --num_frames      Frames to extract per video (default: 8)"
+            echo "  --limit           Limit number of samples (default: 50)"
             echo "  --no-bert         Skip BERT similarity (faster evaluation)"
+            echo "  --use-bert        Enable BERT similarity calculation (enabled by default)"
             echo ""
-            echo "Examples:"
-            echo "  # Using local checkpoint:"
-            echo "  bash scripts/run_inference.sh --model_path results/qved_finetune_mobilevideogpt_0.5B/checkpoint-70"
-            echo ""
-            echo "  # Using HuggingFace model:"
-            echo "  bash scripts/run_inference.sh --hf_repo EdgeVLM-Labs/qved-finetune-20241128"
-            echo ""
-            echo "  # With options:"
-            echo "  bash scripts/run_inference.sh --model_path results/qved_finetune_mobilevideogpt_0.5B --limit 10"
             exit 0
             ;;
         *)
@@ -100,37 +118,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate: either model_path or hf_repo must be provided
-if [ -z "$MODEL_PATH" ] && [ -z "$HF_REPO" ]; then
-    echo "❌ Error: Either --model_path or --hf_repo is required"
-    echo "Use --help for usage information"
-    exit 1
-fi
-
 # If HF repo is provided, use it as model path
 if [ -n "$HF_REPO" ]; then
-    # Extract repo ID from URL if full URL is provided
-    # e.g., https://huggingface.co/EdgeVLM-Labs/qved-finetune -> EdgeVLM-Labs/qved-finetune
     if [[ "$HF_REPO" == *"huggingface.co/"* ]]; then
         HF_REPO=$(echo "$HF_REPO" | sed 's|.*huggingface.co/||' | sed 's|/$||')
     fi
-
     echo "🤗 Using HuggingFace model: $HF_REPO"
     MODEL_PATH="$HF_REPO"
+fi
 
-    # Set default output directory for HF models
-    if [ -z "$OUTPUT_DIR" ]; then
-        # Create output dir based on repo name
-        REPO_NAME=$(echo "$HF_REPO" | sed 's|/|_|g')
-        OUTPUT_DIR="results/hf_inference_${REPO_NAME}"
-        mkdir -p "$OUTPUT_DIR"
-    fi
-else
-    # Validate local model path exists
-    if [ ! -e "$MODEL_PATH" ]; then
-        echo "❌ Error: Model path not found: $MODEL_PATH"
-        exit 1
-    fi
+# Use default model if none specified
+if [ -z "$MODEL_PATH" ]; then
+    MODEL_PATH="unsloth/gemma-3n-E2B-it"
+    echo "📦 Using default model: $MODEL_PATH"
 fi
 
 if [ ! -f "$TEST_JSON" ]; then
@@ -138,17 +138,12 @@ if [ ! -f "$TEST_JSON" ]; then
     exit 1
 fi
 
-# Set output directory if not already set
+# Set output directory
 if [ -z "$OUTPUT_DIR" ]; then
-    # Extract base directory (remove checkpoint-XX if present)
-    if [[ "$MODEL_PATH" == *"checkpoint-"* ]]; then
-        OUTPUT_DIR=$(dirname "$MODEL_PATH")
-    else
-        OUTPUT_DIR="$MODEL_PATH"
-    fi
+    MODEL_NAME=$(basename "$MODEL_PATH" | sed 's|/|_|g')
+    OUTPUT_DIR="results/test_inference_${MODEL_NAME}"
 fi
 
-# Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR" 2>/dev/null || true
 
 PREDICTIONS_FILE="${OUTPUT_DIR}/test_predictions.json"
@@ -162,7 +157,7 @@ echo "  Data path:       $DATA_PATH"
 echo "  Output dir:      $OUTPUT_DIR"
 echo "  Device:          $DEVICE"
 echo "  Max new tokens:  $MAX_NEW_TOKENS"
-echo "  Base model:      $BASE_MODEL"
+echo "  Frames/video:    $NUM_FRAMES"
 if [ -n "$LIMIT" ]; then
     echo "  Sample limit:    $LIMIT"
 fi
@@ -178,50 +173,73 @@ if [ -n "$LIMIT" ]; then
     LIMIT_ARG="--limit $LIMIT"
 fi
 
-python utils/test_inference.py \
+set +e  # Don't exit on error for inference step
+python utils/test_inference_unsloth.py \
     --model_path "$MODEL_PATH" \
     --test_json "$TEST_JSON" \
     --data_path "$DATA_PATH" \
     --output "$PREDICTIONS_FILE" \
     --device "$DEVICE" \
     --max_new_tokens "$MAX_NEW_TOKENS" \
-    --base_model "$BASE_MODEL" \
+    --num_frames "$NUM_FRAMES" \
     $LIMIT_ARG
 
-if [ $? -ne 0 ]; then
-    echo "❌ Inference failed!"
-    exit 1
-fi
+INFERENCE_EXIT_CODE=$?
+set -e  # Re-enable exit on error
 
-echo ""
-echo "✓ Inference complete! Predictions saved to: $PREDICTIONS_FILE"
-echo ""
-
-# Step 2: Generate evaluation report
-echo "[Step 2/2] Generating evaluation report..."
-echo "========================================="
-
-python utils/generate_test_report.py \
-    --predictions "$PREDICTIONS_FILE" \
-    --output "$REPORT_FILE" \
-    $NO_BERT
-
-if [ $? -ne 0 ]; then
-    echo "⚠ Warning: Failed to generate evaluation report"
-    echo "  You can generate it later with:"
-    echo "  python utils/generate_test_report.py --predictions $PREDICTIONS_FILE"
+if [ $INFERENCE_EXIT_CODE -eq 0 ]; then
+    echo ""
+    echo "✓ Inference complete! Predictions saved to: $PREDICTIONS_FILE"
+    echo ""
 else
     echo ""
-    echo "✓ Evaluation report saved to: $REPORT_FILE"
+    echo "⚠ Inference completed with errors (exit code: $INFERENCE_EXIT_CODE)"
+    echo "  Predictions may be incomplete: $PREDICTIONS_FILE"
+    echo ""
 fi
 
-echo ""
+# Step 2: Generate evaluation report (always run if predictions file exists)
+if [ -f "$PREDICTIONS_FILE" ]; then
+    echo "[Step 2/2] Generating evaluation report..."
+    echo "========================================="
+
+    set +e  # Don't exit on error for report generation
+    python utils/generate_test_report.py \
+        --predictions "$PREDICTIONS_FILE" \
+        --output "$REPORT_FILE" \
+        $NO_BERT
+
+    REPORT_EXIT_CODE=$?
+    set -e  # Re-enable exit on error
+
+    if [ $REPORT_EXIT_CODE -eq 0 ]; then
+        echo ""
+        echo "✓ Evaluation report saved to: $REPORT_FILE"
+        echo ""
+    else
+        echo ""
+        echo "⚠ Report generation failed (exit code: $REPORT_EXIT_CODE)"
+        echo "  You can manually generate the report with:"
+        echo "    python utils/generate_test_report.py --predictions $PREDICTIONS_FILE --output $REPORT_FILE"
+        echo ""
+    fi
+else
+    echo ""
+    echo "⚠ Skipping report generation - predictions file not found: $PREDICTIONS_FILE"
+    echo ""
+fi
+
 echo "========================================="
-echo "✅ All steps complete!"
+echo "✅ Process complete!"
 echo "========================================="
 echo ""
 echo "Output files:"
 echo "  Predictions: $PREDICTIONS_FILE"
+if [ -f "$REPORT_FILE" ]; then
+    echo "  Report:      $REPORT_FILE"
+else
+    echo "  Report:      (not generated)"
+fi
 echo "  Report:      $REPORT_FILE"
 echo ""
 echo "========================================="

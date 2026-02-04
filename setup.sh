@@ -1,104 +1,263 @@
 #!/bin/bash
 # ==========================================
-# Setup Script for Google/Gemma-3N E2B
+# Setup Script for Gemma-3N Fine-tuning (RunPod-safe)
 # ==========================================
 
-echo "🔧 Creating workspace..."
+set +e
+
+echo "🔧 Setting up Gemma-3N fine-tuning environment..."
+echo ""
 
 # ----------------------------
-# Miniconda installation
+# System dependencies (from RUNPOD_QUICKSTART.md)
 # ----------------------------
-cd ..
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
-bash miniconda.sh -b -p $HOME/miniconda
-export PATH="$HOME/miniconda/bin:$PATH"
-source $HOME/miniconda/etc/profile.d/conda.sh
+echo "📦 Installing system dependencies..."
+if command -v apt-get &> /dev/null; then
+    apt-get update -qq 2>/dev/null || true
+    apt-get install -y wget git build-essential -qq 2>/dev/null || echo "⚠️  Some system packages may need manual installation"
+else
+    echo "⚠️  apt-get not found, skipping system dependencies"
+fi
 
-conda init bash
-# source ~/.bashrc
+# ----------------------------
+# Conda bootstrap
+# ----------------------------
+CONDA_INSTALLED=false
+if ! command -v conda &> /dev/null; then
+    echo "📦 Installing Miniconda..."
+    cd /tmp
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+    bash miniconda.sh -b -p /root/miniconda
+    export PATH="/root/miniconda/bin:$PATH"
+    eval "$(/root/miniconda/bin/conda shell.bash hook)"
+    conda init bash
+    CONDA_INSTALLED=true
+    echo "✅ Miniconda installed"
+else
+    echo "✅ Conda already installed"
+    eval "$(conda shell.bash hook)"
+fi
 
-echo "📦 Creating Conda environment..."
-conda create --name=gemma3n python=3.11 -y
+# ----------------------------
+# Accept conda Terms of Service (if required)
+# ----------------------------
+echo "📜 Accepting conda Terms of Service..."
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main 2>/dev/null || true
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r 2>/dev/null || true
+
+# ----------------------------
+# FORCE conda-forge only (CRITICAL FIX)
+# ----------------------------
+echo "🔒 Forcing conda-forge only (avoiding Anaconda ToS)..."
+
+conda config --remove channels defaults 2>/dev/null || true
+conda config --add channels conda-forge
+conda config --set channel_priority strict
+
+echo "✅ Channel configuration:"
+conda config --show channels
+
+# ----------------------------
+# Create environment
+# ----------------------------
+echo ""
+echo "📦 Creating Conda environment 'gemma3n'..."
+
+if conda env list | grep -q "^gemma3n "; then
+    echo "✅ Environment already exists"
+else
+    conda create \
+        -n gemma3n \
+        python=3.11 \
+        -c conda-forge \
+        --override-channels \
+        -y || {
+            echo "❌ Failed to create environment"
+            exit 1
+        }
+fi
+
+# ----------------------------
+# Activate environment
+# ----------------------------
+echo ""
+echo "🔄 Activating environment..."
 conda activate gemma3n
 
-pip install --upgrade pip
+echo "✅ Active env: $CONDA_DEFAULT_ENV"
 
 # ----------------------------
-# Base Python packages
+# Upgrade pip
 # ----------------------------
-echo "🧱 Installing base packages..."
-pip install torch==2.1.2 torchvision==0.16.2 torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install transformers==4.55.4
-pip install timm
-pip install sentencepiece protobuf datasets>=3.4.1,<4.0.0 huggingface_hub>=0.34.0 hf_transfer
-pip install unsloth unsloth_zoo
-pip install opencv-python opencv-contrib-python Pillow
-pip install gradio gradio_client requests httpx uvicorn fastapi
-pip install einops einops-exts loguru tenacity numpy<2.0 wandb openai==1.54.0
+echo "📦 Upgrading pip..."
+python -m pip install --upgrade pip --quiet
 
 # ----------------------------
-# Video augmentation: VidAug
+# Install PyTorch stack first (all components together)
 # ----------------------------
-echo "🎥 Installing VidAug..."
-git clone https://github.com/okankop/vidaug
-cd vidaug
-python setup.py sdist && pip install dist/vidaug-0.1.tar.gz
-cd ..
-pip install git+https://github.com/okankop/vidaug
+echo "🔥 Installing PyTorch stack with CUDA 12.1..."
+pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121 --quiet
+echo "⚡ Installing compatible xformers..."
+pip install xformers==0.0.28.post3 --quiet
 
 # ----------------------------
-# FlashAttention for faster inference/training
+# Determine script directory
 # ----------------------------
-echo "⚡ Installing FlashAttention..."
-git clone https://github.com/HazyResearch/flash-attention.git
-cd flash-attention
-pip install ninja packaging wheel
-pip uninstall -y torch torchvision torchaudio
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-pip install flash-attn --no-build-isolation
-python -c "import flash_attn; print(f'✅ Flash Attention version: {flash_attn.__version__}')"
-cd ..
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
 # ----------------------------
-# Optional: Video libraries for frame handling
+# Install requirements (excluding mamba-ssm and xformers)
 # ----------------------------
-pip install imageio decord scikit-learn scikit-image albumentations
+if [ ! -f requirements.txt ]; then
+    echo "❌ requirements.txt not found in $SCRIPT_DIR"
+    echo "Current directory: $(pwd)"
+    echo "Listing files:"
+    ls -la
+    exit 1
+fi
+
+echo "📦 Installing requirements (excluding mamba-ssm and xformers)..."
+# Install everything except mamba-ssm and xformers (already installed)
+grep -v -e "mamba-ssm" -e "xformers" requirements.txt > /tmp/requirements_temp.txt || true
+pip install -r /tmp/requirements_temp.txt --quiet || {
+    echo "⚠️  Some packages failed to install, continuing..."
+}
+rm -f /tmp/requirements_temp.txt
 
 # ----------------------------
-# LaTeX for reports (optional)
+# Skip mamba-ssm installation (optional and causes build issues)
 # ----------------------------
-apt-get update
-apt-get install -y texlive texlive-latex-extra texlive-fonts-recommended dvipng cm-super
+echo "⚠️  Skipping mamba-ssm (optional - causes build issues on some systems)"
+echo "    If you need VideoMamba support, install manually after setup completes"
 
 # ----------------------------
-# Environment verification
+# Core dependencies
 # ----------------------------
-echo "=== CUDA Check ==="
-nvcc --version 2>/dev/null || echo "❌ nvcc not found"
-nvidia-smi 2>/dev/null || echo "❌ nvidia-smi not found"
+echo "📦 Installing core dependencies..."
+pip install \
+    opencv-python \
+    matplotlib \
+    wandb \
+    nltk \
+    rouge-score \
+    sacrebleu \
+    openpyxl \
+    sentence-transformers \
+    --quiet
+
+python - <<EOF
+import nltk
+nltk.download("punkt", quiet=True)
+EOF
+
+# ----------------------------
+# Unsloth stack (ensure compatibility with PyTorch 2.5.1)
+# ----------------------------
+echo "🦥 Installing Unsloth stack..."
+pip uninstall -y unsloth unsloth_zoo peft --quiet 2>/dev/null || true
+pip install --upgrade unsloth unsloth_zoo timm --quiet
+pip install --upgrade packaging ninja einops peft accelerate bitsandbytes --quiet
+pip install transformers==4.56.2 --quiet
+pip install --no-deps trl==0.22.2 --quiet
+
+# ----------------------------
+# Verification
+# ----------------------------
+echo ""
+echo "=========================================="
+echo "🔍 Verification"
+echo "=========================================="
+
+python - <<EOF
+import torch, transformers
+print("PyTorch:", torch.__version__)
+print("CUDA available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("CUDA version:", torch.version.cuda)
+print("Transformers:", transformers.__version__)
+
+# Check xformers
+try:
+    import xformers
+    print("✅ xformers:", xformers.__version__)
+except Exception as e:
+    print("⚠️  xformers not available")
+
+# Check mamba-ssm (optional)
+try:
+    import mamba_ssm
+    print("✅ Mamba-SSM OK (optional)")
+except Exception as e:
+    print("⚠️  Mamba-SSM not available (optional - not needed for basic usage)")
+
+# Check Unsloth
+try:
+    from unsloth import FastVisionModel
+    print("✅ Unsloth OK")
+except Exception as e:
+    print("❌ Unsloth error:", e)
+    print("   Run: bash fix_unsloth.sh")
+EOF
+
+# ----------------------------
+# Final message
+# ----------------------------
+echo ""
+echo "=========================================="
+echo "✅ SETUP COMPLETE"
+echo "=========================================="
+echo ""
+echo "Activate with:"
+echo "  conda activate gemma3n"
+echo ""
+
+# ----------------------------
+# Service Authentication
+# ----------------------------
+echo "=========================================="
+echo "🔑 Service Authentication Required"
+echo "=========================================="
+echo ""
+echo "To use this project, you need to authenticate with:"
+echo "  1. HuggingFace (for models and datasets)"
+echo "  2. Weights & Biases (for training tracking)"
+echo ""
+read -p "Do you want to login now? (y/n): " -n 1 -r
+echo ""
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "📦 Ensuring HuggingFace CLI compatibility..."
+    # Install with version constraint to match transformers 4.56.2
+    pip install 'huggingface_hub>=0.34.0,<1.0' --quiet
+
+    echo ""
+    echo "🤗 HuggingFace Login"
+    echo "Get your token from: https://huggingface.co/settings/tokens"
+    echo ""
+    huggingface-cli login
+
+    echo ""
+    echo "📊 Weights & Biases Login"
+    echo "Get your API key from: https://wandb.ai/authorize"
+    echo ""
+    wandb login
+
+    echo ""
+    echo "✅ Authentication complete!"
+else
+    echo ""
+    echo "⚠️  You can login later by running:"
+    echo "    huggingface-cli login"
+    echo "    wandb login"
+fi
 
 echo ""
-echo "=== PyTorch CUDA Check ==="
-python -c "
-import torch
-print(f'PyTorch version: {torch.__version__}')
-print(f'CUDA available: {torch.cuda.is_available()}')
-if torch.cuda.is_available():
-    print(f'CUDA version: {torch.version.cuda}')
-    print(f'GPU: {torch.cuda.get_device_name(0)}')
-else:
-    print('❌ PyTorch cannot see CUDA')
-"
-
-# ----------------------------
-# WandB & HuggingFace login
-# ----------------------------
-echo "🔑 Logging into WandB..."
-wandb login
-
-echo "🤗 Logging into HuggingFace Hub..."
-hf auth login
-
-echo "✅ Setup complete!"
-echo "🚀 Gemma-3N E2B environment is ready."
-source ~/.bashrc
+echo "=========================================="
+echo "🚀 Ready to Start"
+echo "=========================================="
+echo ""
+echo "Start fine-tuning:"
+echo "  bash scripts/finetune_gemma3n_unsloth.sh"
+echo ""

@@ -108,3 +108,84 @@ Both packages use pre-compiled CUDA kernels that only support up to sm_90 (Hoppe
 - [Mamba SSM GitHub](https://github.com/state-spaces/mamba)
 - [Causal Conv1d GitHub](https://github.com/Dao-AILab/causal-conv1d)
 - [CUDA Compute Capabilities](https://developer.nvidia.com/cuda-gpus)
+---
+
+## ``Issue #2``: Mamba-SSM Build Error - "ModuleNotFoundError: No module named 'torch'"
+
+### Problem
+
+When installing mamba-ssm via pip, you may encounter this error:
+
+```
+error: subprocess-exited-with-error
+
+× Getting requirements to build wheel did not run successfully.
+│ exit code: 1
+╰─> [20 lines of output]
+    ...
+    File "<string>", line 19, in <module>
+    ModuleNotFoundError: No module named 'torch'
+    [end of output]
+
+note: This error originates from a subprocess, and is likely not a problem with pip.
+ERROR: Failed to build 'mamba-ssm' when getting requirements to build wheel
+```
+
+### Root Cause
+
+The `mamba-ssm` package's `setup.py` requires PyTorch to be **already installed** during the build process. Specifically, the error occurs during the `get_requires_for_build_wheel` phase when pip tries to determine build dependencies. Without torch available in the build environment, the installation fails.
+
+### Solution
+
+**Option 1: Use existing fix scripts (Recommended)**
+
+```bash
+# For complete environment fix (includes torch, unsloth, and mamba-ssm)
+bash fix_torch_int1.sh
+
+# OR for just the basic environment setup
+bash finetune_env.sh
+```
+
+**Option 2: Manual installation**
+
+Install PyTorch first, then build mamba-ssm with proper flags:
+
+```bash
+# 1. Uninstall existing PyTorch (if any)
+pip uninstall -y torch torchvision torchaudio
+
+# 2. Install PyTorch with CUDA 12.1
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# 3. Uninstall existing mamba-ssm (if any)
+pip uninstall -y mamba-ssm
+
+# 4. Clear pip cache
+pip cache purge
+
+# 5. Install mamba-ssm with proper build flags
+pip install mamba-ssm --no-cache-dir --no-build-isolation
+```
+
+### Why This Works
+
+- **`--no-build-isolation`**: This flag prevents pip from creating an isolated build environment, ensuring that the pre-installed torch is visible during the build process.
+- **`--no-cache-dir`**: This forces a fresh build without using cached artifacts that might have been built with a different torch version.
+- **Installing torch first**: Ensures torch is available when mamba-ssm's setup.py tries to import it.
+
+### Prevention
+
+The installation order has been fixed in:
+- [`requirements.txt`](../requirements.txt) - PyTorch is now listed first with clear comments
+- [`setup.sh`](../setup.sh) - Installs PyTorch before other requirements
+- [`finetune_env.sh`](../finetune_env.sh) - Uses proper installation order
+
+### Verification
+
+After installation, verify with:
+
+```bash
+python -c "import torch; print(f'✅ PyTorch {torch.__version__}')"
+python -c "import mamba_ssm; print('✅ Mamba-SSM imported successfully')"
+```
