@@ -1,537 +1,1411 @@
-# Gemma 3n Inference & Fine-tuning
+# Gemma-3N Fine-tuning for Video Understanding
 
-A clean, production-ready Python project for running inference and fine-tuning on **Gemma 3n** multimodal models using Hugging Face Transformers, TRL, and PEFT.
+Fine-tune Google's **Gemma-3N (unsloth/gemma-3n-E2B-it)** model on video datasets using **Unsloth FastVisionModel** for efficient LoRA training. Optimized for exercise form analysis and video understanding tasks.
 
-## Features
-
-- ✅ **Multimodal inference**: Text-only, image+text, video+text (frame-based)
-- ✅ **Fine-tuning**: LoRA and QLoRA (PEFT) with TRL's SFTTrainer
-- ✅ **Flexible video handling**: Sample frames uniformly or at specified FPS
-- ✅ **Single-GPU friendly**: Optimized for consumer hardware with 4-bit quantization
-- ✅ **CPU fallback**: Run inference on CPU when CUDA is unavailable
-- ✅ **Type hints & docstrings**: Clean, maintainable code
-
-## Table of Contents
-
-- [Installation](#installation)
-- [Dataset Preparation](#dataset-preparation)
-  - [Quick Setup](#quick-setup)
-  - [Manual Setup](#manual-setup)
-- [Quick Start](#quick-start)
-  - [Text-Only Inference](#text-only-inference)
-  - [Image + Text Inference](#image--text-inference)
-  - [Video + Text Inference](#video--text-inference)
-  - [Fine-Tuning](#fine-tuning)
-- [Training Monitoring](#training-monitoring)
-- [Model Sharing](#model-sharing)
-- [Project Structure](#project-structure)
-- [Dataset Format](#dataset-format)
-- [Advanced Usage](#advanced-usage)
-- [Troubleshooting](#troubleshooting)
-- [References](#references)
+**🎯 Model:** `unsloth/gemma-3n-E4B-it` | **📊 Dataset:** EdgeVLM-Labs/QVED-Test-Dataset | **⚡ Framework:** Unsloth
 
 ---
 
-## Installation
+## 🚀 Quick Start
 
-### Prerequisites
-
-- Python 3.8+
-- CUDA 11.8+ (recommended for GPU acceleration)
-- Git
-
-### Install Dependencies
+### For RunPod Users
 
 ```bash
-# Clone or navigate to the project
+# 1. Install dependencies and clone repo
+apt-get update && apt-get install -y wget git build-essential
+git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
+git checkout gemma-1
 
-# Install requirements
+# 2. Run automated setup (installs conda, packages, and prompts for auth)
+bash setup.sh
+
+# If setup installs conda for first time, restart shell and run again:
+source ~/.bashrc
+bash setup.sh
+
+# 3. Activate environment
+conda activate gemma3n
+
+# 4. Run inference on sample videos
+python create_test_json.py --video_dir sample_videos
+bash scripts/run_inference.sh \
+  --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 \
+  --test_json dataset/qved_test.json \
+  --data_path sample_videos
+```
+
+### For Local/VM Setup
+
+```bash
+# Install system dependencies (Ubuntu/Debian)
+apt-get update
+apt-get install -y wget git build-essential
+
+# 1. Clone and setup environment (includes auth prompts)
+git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
+cd gemma3-testing
+bash setup.sh
+
+# If setup says "restart terminal", do this:
+# - Close and reopen terminal, then:
+cd gemma3-testing
+bash setup.sh  # Run again
+
+# 2. Activate environment (always needed in new terminals)
+conda activate gemma3n
+
+# Note: setup.sh will prompt you to login to HuggingFace and WandB
+# Or login manually anytime with:
+#   huggingface-cli login
+#   wandb login
+
+# 3. Prepare dataset
+python dataset.py download --max-per-class 5
+python dataset.py prepare
+
+# 4. Fine-tune model (uses unsloth/gemma-3n-E4B-it)
+bash scripts/finetune_gemma3n_unsloth.sh
+
+# 6. Run inference
+python utils/infer_qved.py \
+    --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit \
+    --video_path sample_videos/00000340.mp4 \
+    --prompt "Analyze the exercise form shown in this video"
+
+# 7. Evaluate model (limit to 50 samples for quick test)
+python eval/eval_gemma3n.py \
+    --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit \
+    --eval_json dataset/qved_val.json \
+    --output_file results/eval_results.json \
+    --max_samples 50
+```
+
+**📖 Complete Guide:** See [docs/FINETUNE_GUIDE.md](docs/FINETUNE_GUIDE.md) for detailed instructions.
+
+---
+
+## 📋 Prerequisites
+
+- **OS:** Linux/macOS (Ubuntu 20.04+ recommended)
+- **GPU:** NVIDIA GPU with 16GB+ VRAM (A100/H100 recommended for full training)
+- **Storage:** 50GB+ free disk space
+- **Software:** 
+  - Git
+  - CUDA 11.8+ / 12.0+
+  - Python 3.11
+  - Conda/Miniconda
+
+---
+
+## 🔧 Installation
+
+### Step-by-Step Setup Process
+
+#### 1. Clone Repository
+
+```bash
+git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
+cd gemma3-testing
+```
+
+#### 2. Run Setup Script (First Time)
+
+```bash
+bash setup.sh
+```
+
+**What happens:**
+- **If Miniconda not installed:** 
+  - Script installs Miniconda
+  - **STOPS and asks you to restart terminal**
+  - After restart, run `bash setup.sh` again
+  
+- **If Miniconda already installed:**
+  - Creates `gemma3n` environment with Python 3.11
+  - Activates environment automatically
+  - Installs all dependencies
+  - Environment is ready to use!
+
+#### 3. If Setup Asked You to Restart
+
+After running setup.sh for the first time on a fresh system:
+
+```bash
+# Restart your terminal, then:
+cd gemma3-testing
+bash setup.sh  # Run again to complete installation
+```
+
+The second run will:
+- ✅ Create conda environment
+- ✅ Install all packages
+- ✅ Verify installation
+- ✅ Environment will be activated and ready!
+
+#### 4. For Future Sessions
+
+Every time you open a new terminal:
+
+```bash
+conda activate gemma3n
+```
+
+**What gets installed:**
+- `transformers==4.56.2` (required version for Gemma-3N)
+- `trl==0.22.2` (for SFTTrainer)
+- `unsloth` + `unsloth_zoo` (efficient LoRA training)
+- `torch>=2.1.0`, `accelerate`, `bitsandbytes`
+- Vision: `opencv-python`, `timm`, `Pillow`
+- Dataset: `datasets>=4.3.0`, `huggingface_hub`
+- Training: `wandb` (for tracking)
+- Evaluation: `nltk`, `rouge-score`, `sacrebleu`, `openpyxl`, `sentence-transformers`
+
+### 5. Verify Installation
+
+Check that everything is working correctly:
+
+```bash
+# Ensure environment is activated
+conda activate gemma3n
+
+# Check GPU and CUDA
+nvidia-smi
+nvcc --version
+
+# Check PyTorch CUDA support
+python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
+
+# Check Unsloth FastVisionModel
+python -c "from unsloth import FastVisionModel; print('✅ Unsloth FastVisionModel ready')"
+
+# Check transformers version
+python -c "import transformers; print(f'Transformers: {transformers.__version__}')"
+```
+
+Expected output:
+```
+PyTorch: 2.x.x+cu118
+CUDA available: True
+✅ Unsloth FastVisionModel ready
+Transformers: 4.56.2
+```
+
+**Note:** If you skipped authentication during setup, login now:
+```bash
+huggingface-cli login  # Get token from https://huggingface.co/settings/tokens
+wandb login            # Get key from https://wandb.ai/authorize
+```
+
+---
+
+## 🔧 Troubleshooting Setup
+
+### Common Issues and Quick Fixes
+
+#### Issue: "conda: command not found" after setup
+
+**Solution:**
+```bash
+# Restart terminal, then:
+source ~/.bashrc
+conda activate gemma3n
+```
+
+#### Issue: "Terms of Service have not been accepted"
+
+**Solution:** (Required for newer conda versions)
+```bash
+# Accept conda Terms of Service
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+# Then create environment
+conda create -n gemma3n python=3.11 -y
+conda activate gemma3n
+```
+
+**Or simply run the updated setup script which handles this automatically:**
+```bash
+bash setup.sh
+```
+
+**Solution:**
+The updated setup.sh now handles this automatically! If you still see this error:
+```bash
+conda config --set tos_accepted yes
+bash setup.sh
+```
+
+#### Issue: Environment not activating
+
+**Solution:**
+```bash
+# Initialize conda in current shell
+eval "$(conda shell.bash hook)"
+conda activate gemma3n
+
+# Or restart terminal and try again
+```
+
+#### Issue: "Setup failed during package installation"
+
+**Solution:**
+```bash
+# Activate environment and install manually
+conda activate gemma3n
 pip install -r requirements.txt
 ```
 
-### Optional Dependencies
+#### Issue: ImportError for specific packages
 
-For faster video decoding:
-
+**Solution:**
 ```bash
-pip install decord
+conda activate gemma3n
+pip install -r requirements.txt --force-reinstall
 ```
 
-For audio support (future use):
+### Full Troubleshooting Guide
 
-```bash
-pip install soundfile
-```
-
-### Hugging Face Token
-
-Gemma models may be gated. You'll need to:
-
-1. Accept the license on the [Gemma model page](https://huggingface.co/google/gemma-3n-E2B)
-2. Log in to Hugging Face:
-   ```bash
-   huggingface-cli login
-   ```
+For complete troubleshooting steps and solutions, see **[SETUP_TROUBLESHOOTING.md](SETUP_TROUBLESHOOTING.md)**
 
 ---
 
-## Dataset Preparation
+## 📊 Dataset Management
 
-This project includes utilities for working with the **QVED** (Qualified Exercise Dataset) from EdgeVLM-Labs.
+The `dataset.py` script manages the **QVED (Quality Video Exercise Dataset)** from EdgeVLM-Labs/QVED-Test-Dataset:
 
-### Quick Setup
+### Create Test Dataset from Your Videos
 
-Run the complete dataset preparation pipeline:
-
-```bash
-# One-command setup (install + dataset + verification)
-./scripts/quick_setup.sh
-
-# Or manually initialize dataset only
-./scripts/initialize_dataset.sh
-```
-
-This will:
-
-1. Download videos from the QVED dataset
-2. Filter ground truth annotations
-3. Convert to Gemma JSONL format (train/val/test splits)
-4. Verify the setup
-
-### Manual Setup
-
-If you prefer manual control:
+For quick inference testing with your own videos:
 
 ```bash
-# 1. Download videos (will prompt for count per class)
-python -m utils.load_dataset
+# Create test JSON from a video directory
+python create_test_json.py --video_dir sample_videos
+# Output: dataset/qved_test.json
 
-# 2. Filter annotations to match downloaded videos
-python -m utils.filter_ground_truth
-
-# 3. Convert to Gemma format with 60/20/20 split
-python -m utils.convert_dataset
-
-# 4. Verify everything is set up correctly
-./scripts/verify_setup.sh
+# Or specify custom output location
+python create_test_json.py \
+  --video_dir /path/to/videos \
+  --output dataset/my_test.json
 ```
 
-**Dataset Structure:**
+This generates a test dataset JSON that can be used with the inference scripts.
 
+### Download QVED Dataset
+
+For training and evaluation:
+
+```bash
+# Download 5 videos per exercise class (fast - for testing)
+python dataset.py download --max-per-class 5
+
+# Download more videos (for production training)
+python dataset.py download --max-per-class 20
+
+# Download all available videos
+python dataset.py download
 ```
-dataset/
-├── videos/
-│   ├── exercise1/
-│   │   ├── video1.mp4
-│   │   └── ...
-│   └── exercise2/
-│       └── ...
-├── manifest.json              # Downloaded video metadata
-├── fine_grained_labels.json   # Original QVED annotations
-├── ground_truth.json          # Filtered annotations
-├── gemma_train.jsonl          # Training set (60%)
-├── gemma_val.jsonl            # Validation set (20%)
-└── gemma_test.jsonl           # Test set (20%)
+
+Videos are saved to `videos/` directory.
+
+### Prepare Train/Val/Test Splits
+
+```bash
+python dataset.py prepare
+```
+
+Creates JSON files with 60/20/20 split:
+- `dataset/qved_train.json` - Training set (60%)
+- `dataset/qved_val.json` - Validation set (20%)
+- `dataset/qved_test.json` - Test set (20%)
+
+Each JSON entry contains:
+```json
+{
+  "video": "videos/00000340.mp4",
+  "conversations": [
+    {"from": "human", "value": "Analyze this exercise..."},
+    {"from": "gpt", "value": "The form shows..."}
+  ]
+}
+```
+
+### Optional: Clean Dataset
+
+```bash
+# Filter low-quality videos (resolution, brightness, sharpness checks)
+python dataset.py clean
+```
+
+### Copy Videos for Testing
+
+```bash
+# Copy subset to flat folder for batch inference
+python dataset.py copy --num-videos 10 --output test_videos
+```
+
+### All-in-One Workflow
+
+```bash
+# Download, prepare, and clean in one command
+python dataset.py all --max-per-class 10
 ```
 
 ---
 
-## Quick Start
+## 🎯 Fine-tuning (unsloth/gemma-3n-E4B-it)
 
-### Text-Only Inference
+### Method 1: Quick Start (Recommended)
+
+The easiest way - uses local dataset prepared by `dataset.py`:
 
 ```bash
-python scripts/run_inference.py \
-  --mode text \
-  --model_id google/gemma-3n-E2B \
-  --prompt "Explain the theory of relativity in simple terms." \
-  --max_new_tokens 256
+bash scripts/finetune_gemma3n_unsloth.sh
 ```
 
-### Image + Text Inference
+**Default Configuration:**
+- **Model:** `unsloth/gemma-3n-E4B-it` (4B parameters, instruction-tuned)
+- **Dataset:** Local QVED (`dataset/qved_train.json` + videos in `videos/`)
+- **LoRA:** r=64, alpha=128, dropout=0.0, target_modules=all-linear
+- **Training:** 
+  - Batch size: 8 per device
+  - Gradient accumulation: 4 steps
+  - Effective batch size: 32
+  - Learning rate: 2e-4 with cosine schedule
+  - Projector LR: 1e-4
+  - Warmup ratio: 5%
+  - Max gradient norm: 0.3
+  - Weight decay: 0.001
+  - Epochs: 3
+  - Dataloader workers: 2
+- **Video:** 16 frames per video
+- **Max sequence length:** 2048 tokens
+- **Evaluation:**
+  - Per device eval batch size: 8
+  - Eval strategy: "steps"
+  - Eval steps: Auto-calculated (~10 times per epoch)
+  - Save steps: 30
+- **Optimizer:** AdamW fused
+- **Tracking:** WandB (real-time metrics every step)
+
+### Method 2: Custom Configuration
+
+For advanced users who want to customize hyperparameters:
 
 ```bash
-python scripts/run_inference.py \
-  --mode image \
-  --model_id google/gemma-3n-E2B \
-  --prompt "Describe what you see in this image." \
-  --image_path path/to/image.jpg \
-  --max_new_tokens 200
+python gemma3_finetune_unsloth.py \
+    --model_name unsloth/gemma-3n-E4B-it \
+    --train_json dataset/qved_train.json \
+    --val_json dataset/qved_val.json \
+    --output_dir outputs/custom_finetune \
+    --num_epochs 3 \
+    --batch_size 8 \
+    --gradient_accumulation 4 \
+    --learning_rate 2e-4 \
+    --projector_lr 1e-4 \
+    --max_seq_length 2048 \
+    --lora_r 64 \
+    --lora_alpha 128 \
+    --num_frames 16 \
+    --dataloader_num_workers 2 \
+    --per_device_eval_batch_size 8 \
+    --save_steps 30 \
+    --eval_steps 0 \
+    --run_eval \
+    --wandb_project "My-Gemma3N-Project" \
+    --wandb_run_name "custom-run-001"
 ```
 
-### Video + Text Inference
+### Method 3: HuggingFace Streaming (Alternative)
 
-Sample 8 frames uniformly:
+Download dataset during training (not recommended - uses HF cache):
 
 ```bash
-python scripts/run_inference.py \
-  --mode video \
-  --model_id google/gemma-3n-E2B \
-  --prompt "What is happening in this video?" \
-  --video_path path/to/video.mp4 \
-  --num_frames 8 \
-  --max_new_tokens 300
+bash scripts/finetune_gemma3n_unsloth.sh --hf
 ```
 
-Sample at 1 FPS:
+### Monitor Training in Real-Time
 
-```bash
-python scripts/run_inference.py \
-  --mode video \
-  --prompt "Describe the key events." \
-  --video_path path/to/video.mp4 \
-  --fps 1.0 \
-  --max_new_tokens 300
+1. Training starts with WandB logging
+2. Visit https://wandb.ai/fyp-21/Finetune-gemma3n (your project)
+3. View live metrics updated every step:
+   - **train/loss:** Training loss per step
+   - **train/grad_norm:** Gradient magnitude
+   - **train/learning_rate:** Current LR (cosine schedule)
+   - **train/epoch:** Training progress
+   - **eval/loss:** Validation loss (every N steps if enabled)
+   - **eval/runtime:** Evaluation time
+   - **eval/samples_per_second:** Eval throughput
+
+Console output shows:
+```
+{'loss': 1.0995, 'grad_norm': 27.17, 'learning_rate': 0.0002, 'epoch': 0.1}
+{'eval_loss': 0.8543, 'eval_runtime': 12.5, 'eval_samples_per_second': 6.8}  # Every EVAL_STEPS
 ```
 
-### Fine-Tuning
+### Evaluation During Training (Enabled by Default)
 
-Prepare a JSONL file (see [Dataset Format](#dataset-format)), then:
+Validation tracking is **enabled by default** in [finetune_gemma3n_unsloth.sh](scripts/finetune_gemma3n_unsloth.sh):
 
 ```bash
-python scripts/run_finetune.py \
-  --model_id google/gemma-3n-E2B \
-  --train_jsonl data/train.jsonl \
-  --output_dir outputs/gemma3n-finetuned \
-  --method qlora \
-  --quant 4bit \
-  --epochs 3 \
-  --batch_size 2 \
-  --grad_accum 4 \
-  --lr 2e-4 \
+# Evaluation configuration (already enabled)
+RUN_EVAL="--run_eval"              # Evaluation enabled
+EVAL_STEPS=0                        # Auto-calculate (evaluates ~10 times per epoch)
+SAVE_STEPS=30                       # Save checkpoint every 30 steps
+LOGGING_STEPS=0                     # Auto-calculate (logs every step for real-time)
+SAVE_EVAL_CSV="--save_eval_csv"    # Save results as CSV after training
+GENERATE_REPORT=""                  # Set to "--generate_report" for Excel report
+PER_DEVICE_EVAL_BATCH_SIZE=8        # Eval batch size
+```
+
+**What happens during evaluation:**
+- ✅ Runs automatically ~10 times per epoch (auto-calculated based on dataset size)
+- ✅ Evaluates on full validation set
+- ✅ Logs `eval/loss`, `eval/runtime`, `eval/samples_per_second` to WandB in real-time
+- ✅ Logs training metrics every step for continuous monitoring
+- ✅ Saves best model checkpoint based on eval loss
+- ✅ Shows evaluation progress in console
+- ✅ Exports results to CSV after training completes
+
+**To disable evaluation** (faster training, no validation tracking):
+```bash
+RUN_EVAL=""  # Remove --run_eval flag
+```
+
+**To manually set evaluation frequency**:
+```bash
+EVAL_STEPS=10  # Eval every 10 steps instead of auto-calculate
+```
+
+Output files after training with eval:
+```
+outputs/gemma3n_finetune_20260108_151431/
+├── eval_results.csv              # Evaluation metrics CSV
+├── eval_predictions.json         # Model predictions on val set
+└── eval_report.xlsx              # Excel report with similarity scores
+```
+
+### Training Output Files
+
+After training completes:
+
+```
+outputs/
+├── gemma3n_finetune_20260108_151431/
+│   ├── adapter_config.json           # LoRA configuration
+│   ├── adapter_model.safetensors     # LoRA weights (small ~600MB)
+│   └── checkpoint-*/                  # Intermediate checkpoints
+│
+└── gemma3n_finetune_20260108_151431_merged_16bit/
+    ├── config.json
+    ├── model.safetensors              # Full merged model (~16GB)
+    ├── tokenizer.json
+    └── processor_config.json          # Use this for inference!
+```
+
+**Which to use:**
+- **For inference:** Use `*_merged_16bit/` directory
+- **For further training:** Use base directory with adapter weights
+
+---
+
+## � Upload to HuggingFace
+
+### Automatic Upload After Training
+
+Enable automatic upload by setting flags in [finetune_gemma3n_unsloth.sh](scripts/finetune_gemma3n_unsloth.sh):
+
+```bash
+# Edit the script
+UPLOAD_TO_HF="--upload_to_hf"     # Enable upload
+HF_REPO_NAME=""                    # Auto-generate name
+HF_PRIVATE="--hf_private"          # Make private (optional)
+
+# Run training (will auto-upload at end)
+bash scripts/finetune_gemma3n_unsloth.sh
+```
+
+### Manual Upload After Training
+
+Upload a saved model manually:
+
+```bash
+# Upload merged 16-bit model (recommended)
+python utils/hf_upload.py \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit \
+    --repo_name my-gemma3n-finetune
+
+# Upload with custom settings
+python utils/hf_upload.py \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit \
+    --repo_name my-custom-model \
+    --private
+
+# Upload LoRA adapters only
+python utils/hf_upload.py \
+    --model_path outputs/gemma3n_finetune_20260108_162806
+```
+
+### Use Uploaded Model
+
+Once uploaded, anyone can use your model:
+
+```python
+from unsloth import FastVisionModel
+
+# Load from HuggingFace
+model, processor = FastVisionModel.from_pretrained(
+    "your-username/my-gemma3n-finetune"
+)
+```
+
+---
+
+## 🔮 Inference
+
+### Method 1: Unsloth-based Inference (Fine-tuned Models)
+
+Best for models fine-tuned with Unsloth:
+
+#### Single Video Analysis
+
+```bash
+# With fine-tuned model
+python utils/infer_qved.py \
+    --model_path outputs/gemma3n_finetune_20260108_151431_merged_16bit \
+    --video_path sample_videos/00000340.mp4\
+    --prompt "Analyze the exercise form shown in this video" \
+    --num_frames 8 \
+    --max_new_tokens 512 \
+    --show_stream
+
+# With base model (no fine-tuning)
+python utils/infer_qved.py \
+    --model_path unsloth/gemma-3n-E4B-it \
+    --video_path sample_videos/00000340.mp4 \
+    --prompt "What is shown in this video?"
+```
+
+**Output example:**
+```
+================================================================================
+QVED Inference - Gemma-3N Video Analysis
+================================================================================
+
+📦 Loading model: outputs/gemma3n_finetune_20260108_151431_merged_16bit...
+✅ Model loaded successfully!
+
+🎥 Processing video: sample_videos/00000340.mp4
+✅ Extracted 8 frames from video
+💬 Prompt: Analyze the exercise form shown in this video
+
+================================================================================
+🤖 Gemma-3N Output:
+The individual is performing a barbell back squat with good depth and control. 
+The bar path is relatively straight, and the lifter maintains proper back angle 
+throughout the movement. Minor improvement could be made in keeping the knees 
+tracking over the toes consistently.
+================================================================================
+```
+
+#### Batch Inference (Multiple Videos)
+
+```bash
+# Create test dataset from your videos
+python create_test_json.py --video_dir sample_videos --output dataset/qved_test.json
+
+# Run inference on test set with fine-tuned model
+bash scripts/run_inference.sh \
+  --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 \
+  --test_json dataset/qved_test.json \
+  --data_path sample_videos \
+  --limit 10
+
+# Or use a local fine-tuned model
+bash scripts/run_inference.sh \
+  --model_path outputs/gemma3n_finetune_merged_16bit \
+  --test_json dataset/qved_test.json \
+  --data_path test_videos \
+  --max_new_tokens 256 \
   --num_frames 8
 ```
 
-**Loading the fine-tuned model:**
-
-```python
-from transformers import AutoModelForCausalLM, AutoProcessor
-from peft import PeftModel
-
-model = AutoModelForCausalLM.from_pretrained("google/gemma-3n-E2B", trust_remote_code=True)
-model = PeftModel.from_pretrained(model, "outputs/gemma3n-finetuned")
-processor = AutoProcessor.from_pretrained("google/gemma-3n-E2B", trust_remote_code=True)
+**Direct Python script:**
+```bash
+python utils/test_inference_unsloth.py \
+    --model_path EdgeVLM-Labs/gemma-3n-E2B-qved-1000 \
+    --test_json dataset/qved_test.json \
+    --data_path sample_videos \
+    --output results/predictions.json \
+    --device cuda \
+    --max_new_tokens 256 \
+    --num_frames 8
 ```
 
 ---
 
-## Training Monitoring
+### Method 2: Transformers-based Inference (Google Gemma-3 Models)
 
-Monitor your training progress with visualization tools:
+For using official Google Gemma-3 models with native transformers library. This method follows Google's official video inference approach and is ideal for:
+- Using pretrained Google Gemma-3 models (`google/gemma-3-4b-it`, `google/gemma-3-12b-it`, etc.)
+- Analyzing physiotherapy exercise videos from QVED dataset
+- Getting baseline results before fine-tuning
+
+**Key Features:**
+- Native transformers implementation (no Unsloth dependency)
+- Frame-by-frame video analysis with timestamps
+- Specialized physiotherapy assistant prompting
+- Compatible with existing evaluation pipeline
+
+#### Batch Inference with Transformers
 
 ```bash
-# Plot training statistics (auto-detects latest log)
-./scripts/plot_training.sh
+# Using default Google Gemma-3 4B model
+bash scripts/run_inference_transformers.sh \
+  --test_json dataset/qved_test.json \
+  --data_path videos \
+  --limit 10
 
-# Or specify a specific log file
-./scripts/plot_training.sh --log_file outputs/training.log --model_name "Gemma-3n-QVED"
+# Using larger model for better quality
+bash scripts/run_inference_transformers.sh \
+  --hf_repo google/gemma-3-12b-it \
+  --test_json dataset/qved_test.json \
+  --data_path sample_videos \
+  --num_frames 10 \
+  --max_new_tokens 256
+
+# Custom configuration
+bash scripts/run_inference_transformers.sh \
+  --hf_repo google/gemma-3-4b-it \
+  --test_json dataset/qved_test.json \
+  --data_path videos \
+  --output_dir results/transformers_inference \
+  --device cuda \
+  --max_new_tokens 512 \
+  --num_frames 8 \
+  --limit 50
 ```
 
-This generates:
-
-- **training_report.pdf**: Combined plots (loss, gradient norm, learning rate)
-- Individual PNG plots for each metric
-- **training_summary.txt**: Statistical summary
-
-**Direct Python usage:**
-
-```python
-from utils.plot_training_stats import plot_combined
-
-plot_combined(
-    log_file="outputs/training.log",
-    output_dir="plots",
-    model_name="Gemma-3n-QVED"
-)
+**Direct Python script:**
+```bash
+python utils/test_inference_transformers.py \
+    --model_path google/gemma-3-4b-it \
+    --test_json dataset/qved_test.json \
+    --data_path videos \
+    --output results/predictions.json \
+    --device cuda \
+    --max_new_tokens 256 \
+    --num_frames 8 \
+    --limit 50
 ```
+
+**Available Gemma-3 Models:**
+- `google/gemma-3-1b-it` - 1B parameters, text-only, 32k context (fastest)
+- `google/gemma-3-4b-it` - 4B parameters, vision+text, 128k context (recommended)
+- `google/gemma-3-12b-it` - 12B parameters, vision+text, 128k context (best quality)
+- `google/gemma-3-27b-it` - 27B parameters, vision+text, 128k context (highest quality)
+
+**Output files:**
+```
+results/test_inference_transformers_<model_name>/
+├── test_predictions.json          # Predictions with ground truth
+└── test_evaluation_report.xlsx    # Excel report with metrics
+```
+
+**System Prompt for Physiotherapy:**
+The transformers inference uses a specialized system prompt optimized for exercise analysis:
+```
+"You are an expert physiotherapy assistant specialized in analyzing exercise videos. 
+Provide clear, concise answers about exercise form, technique, and recommendations."
+```
+
+**Processing Details:**
+- Frames are extracted evenly across video duration
+- Each frame is saved temporarily with timestamp
+- Frames are passed to model with temporal context
+- Automatic cleanup after inference
 
 ---
 
-## Model Sharing
+### Inference Output Files
 
-Upload your fine-tuned model to Hugging Face Hub:
+Both methods generate:
+
+---
+
+## 📊 Evaluation
+
+Evaluate model performance on validation/test sets with automatic metrics:
+
+### Evaluate Fine-tuned Model
 
 ```bash
-python -m utils.hf_upload \
-  --model_path outputs/gemma3n-finetuned \
-  --repo_name username/gemma3n-qved \
-  --base_model google/gemma-3n-E2B \
-  --dataset EdgeVLM-Labs/QVED-Test-Dataset \
-  --private
+# Full evaluation (all samples)
+python eval/eval_gemma3n.py \
+    --model_path outputs/gemma3n_finetune_20260108_151431_merged_16bit \
+    --eval_json dataset/qved_val.json \
+    --output_file results/eval_finetuned.json \
+    --num_frames 8 \
+    --max_new_tokens 256
+
+# Quick test (50 samples)
+python eval/eval_gemma3n.py \
+    --model_path outputs/gemma3n_finetune_20260108_151431_merged_16bit \
+    --eval_json dataset/qved_val.json \
+    --output_file results/eval_finetuned.json \
+    --max_samples 50
 ```
 
-This automatically:
+### Evaluate Base Model (for comparison)
 
-- Creates a model card with training details
-- Uploads adapter weights or full model
-- Documents hyperparameters and usage examples
+```bash
+# Full evaluation
+python eval/eval_gemma3n.py \
+    --model_path unsloth/gemma-3n-E4B-it \
+    --eval_json dataset/qved_val.json \
+    --output_file results/eval_base.json \
+    --num_frames 8
 
-**From Python:**
+# Quick test (50 samples)
+python eval/eval_gemma3n.py \
+    --model_path unsloth/gemma-3n-E4B-it \
+    --eval_json dataset/qved_val.json \
+    --output_file results/eval_base.json \
+    --max_samples 50
+```
 
-```python
-from utils.hf_upload import upload_model_to_hf
+### Quick Test (First 10 samples)
 
-upload_model_to_hf(
-    model_path="outputs/gemma3n-finetuned",
-    repo_name="username/gemma3n-qved",
-    base_model="google/gemma-3n-E2B",
-    dataset_name="EdgeVLM-Labs/QVED-Test-Dataset",
-    private=False
-)
+```bash
+python eval/eval_gemma3n.py \
+    --model_path outputs/gemma3n_finetune_merged_16bit \
+    --eval_json dataset/qved_val.json \
+    --output_file results/eval_quick.json \
+    --max_samples 10
+```
+
+### Evaluation Metrics
+
+The script calculates:
+- **BLEU:** Measures n-gram overlap with reference
+- **ROUGE-1:** Unigram overlap
+- **ROUGE-2:** Bigram overlap  
+- **ROUGE-L:** Longest common subsequence
+
+**Example output:**
+```
+================================================================================
+📊 Evaluation Results
+================================================================================
+Samples evaluated: 84
+Samples skipped: 0
+
+Average Metrics:
+  BLEU:    0.4523
+  ROUGE-1: 0.6234
+  ROUGE-2: 0.4156
+  ROUGE-L: 0.5789
+================================================================================
+
+💾 Results saved to: results/eval_finetuned.json
+
+================================================================================
+📝 Sample Predictions (first 3)
+================================================================================
+
+--- Sample 1 ---
+Prompt: Please evaluate the exercise form shown...
+Ground Truth: The squat form shows good depth with neutral spine.
+Prediction: The individual demonstrates excellent squat form with proper depth.
+Metrics: BLEU=0.521, ROUGE-L=0.634
+```
+
+### Compare Base vs Fine-tuned
+
+```bash
+# Run both evaluations (limit to 50 samples for quick comparison)
+python eval/eval_gemma3n.py --model_path unsloth/gemma-3n-E4B-it --eval_json dataset/qved_val.json --output_file results/base.json --max_samples 50
+python eval/eval_gemma3n.py --model_path outputs/gemma3n_finetune_merged_16bit --eval_json dataset/qved_val.json --output_file results/finetuned.json --max_samples 50
+
+# Compare results manually or use plotting tools
+python utils/plot_training_stats.py results/
+```
+
+### Test Set Inference & Evaluation Report
+
+Run full test set inference and generate a detailed Excel evaluation report with BERT/ROUGE/METEOR metrics:
+
+```bash
+# Test with your fine-tuned model (default: 50 samples)
+bash scripts/run_inference.sh \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit
+
+# Test with base model for comparison
+bash scripts/run_inference.sh \
+    --model_path unsloth/gemma-3n-E4B-it
+
+# Full test set (all samples)
+bash scripts/run_inference.sh \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit \
+    --limit ""
+
+# Fast evaluation without BERT (uses ROUGE/METEOR only)
+bash scripts/run_inference.sh \
+    --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit \
+    --no-bert
+```
+
+**What happens:**
+1. Runs inference on test set ([qved_test.json](dataset/qved_test.json))
+2. Generates predictions JSON with ground truth comparison
+3. Creates Excel report with:
+   - BERT Similarity scores (semantic similarity)
+   - ROUGE-L scores (n-gram overlap)
+   - METEOR scores (word-level matching)
+   - Exercise identification accuracy
+   - Color-coded results (green/yellow/red)
+   - Charts and summary statistics
+
+**Output files:**
+```
+results/test_inference_<model_name>/
+├── test_predictions.json          # Raw predictions with metrics
+└── test_evaluation_report.xlsx    # Excel report with charts
+```
+
+**Manual test report generation:**
+
+If you already have predictions JSON, generate report separately:
+
+```bash
+# Generate report with BERT similarity
+python utils/generate_test_report.py \
+    --predictions results/test_inference_model/test_predictions.json \
+    --output test_report.xlsx
+
+# Without BERT (faster)
+python utils/generate_test_report.py \
+    --predictions test_predictions.json \
+    --no-bert
 ```
 
 ---
 
-## Project Structure
+## ⚙️ Configuration Reference
+
+### Model Options
+
+| Model | Parameters | Context | Use Case |
+|-------|-----------|---------|----------|
+| `unsloth/gemma-3n-E4B-it` | 4B | 50K tokens | **Recommended** - Best balance |
+| `unsloth/gemma-3n-E2B-it` | 2B | 50K tokens | Faster, lower memory |
+
+### LoRA Hyperparameters
+
+| Parameter | Default | Range | Description |
+|-----------|---------|-------|-------------|
+| `lora_r` | 64 | 8-128 | Rank (higher = more capacity) |
+| `lora_alpha` | 128 | 16-256 | Scaling factor (typically 2×r) |
+| `lora_dropout` | 0.0 | 0.0-0.1 | Dropout (0 for no dropout) |
+
+### Training Hyperparameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `batch_size` | 8 | Per-device batch size |
+| `gradient_accumulation` | 4 | Effective batch = batch_size × this (32 total) |
+| `learning_rate` | 2e-4 | Initial learning rate |
+| `projector_lr` | 1e-4 | Projector learning rate |
+| `num_epochs` | 3 | Training epochs |
+| `max_seq_length` | 2048 | Max tokens per sequence |
+| `warmup_ratio` | 0.05 | 5% of steps for warmup |
+| `max_grad_norm` | 0.3 | Gradient clipping |
+| `weight_decay` | 0.001 | L2 regularization |
+| `dataloader_num_workers` | 2 | Parallel data loading |
+| `per_device_eval_batch_size` | 8 | Eval batch size |
+| `eval_steps` | Auto | Evaluate ~10 times per epoch |
+| `save_steps` | 30 | Save checkpoint every 30 steps |
+| `logging_steps` | 1 | Log every step for real-time tracking |
+
+### Video Processing
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `num_frames` | 16 | Frames extracted per video |
+| Frame extraction | `numpy.linspace` | Even spacing across video |
+| Input resolution | 224x224 | Resolution to encoder |
+
+### Memory Requirements
+
+| Configuration | VRAM | Training Speed |
+|--------------|------|----------------|
+| Batch=8, Grad=4, R=64, 16 frames | ~40GB | Baseline |
+| Batch=4, Grad=4, R=64, 16 frames | ~30GB | Slightly slower |
+| Batch=2, Grad=4, R=64, 16 frames | ~24GB | 2× slower |
+| Batch=1, Grad=4, R=64, 8 frames | ~20GB | 4× slower |
+| 4-bit quantization | ~16GB | Slower inference |
+
+---
+
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+**1. `torch._dynamo.config.recompile_limit does not exist`**
+- **Fixed in latest version** - This line has been removed from all scripts
+
+**2. `ValueError: Mismatch in image token count`**
+- **Cause:** `max_seq_length` too small for video frames
+- **Solution:** Set `MAX_SEQ_LENGTH=50000` in bash script (already fixed)
+
+**3. `PackageNotFoundError: deepspeed`**
+- **Cause:** DeepSpeed not installed
+- **Solution:** Already disabled by default. To use: `pip install deepspeed` and edit script
+
+**4. `Video file not found` or `Could not open video file`**
+- **Cause:** Incorrect video path or `--data_path` argument
+- **Solution:** 
+  ```bash
+  # Check where your videos are located
+  ls test_videos/
+  
+  # Make sure --data_path matches your directory structure
+  # If videos are in test_videos/video1.mp4:
+  bash scripts/run_inference.sh --data_path test_videos
+  
+  # If videos are in subdirectories like test_videos/squats/video1.mp4:
+  bash scripts/run_inference.sh --data_path test_videos
+  # (The script will look for subdirectories automatically)
+  ```
+
+**5. `RuntimeError: Unsloth: The tokenizer is weirdly not loaded?`**
+- **Cause:** Fine-tuned model tokenizer loading issue
+- **Solution:** Already fixed in latest version. Pull updates:
+  ```bash
+  git pull origin gemma-1
+  ```
+
+**6. CUDA Out of Memory**
+- Reduce `batch_size` or `gradient_accumulation`
+- Reduce `lora_r` (e.g., from 64 to 32)
+- Enable 4-bit quantization: `LOAD_IN_4BIT="--load_in_4bit"`
+
+**6. WandB Not Logging**
+- Run `wandb login` and paste your API key
+- Check internet connection
+- Set `report_to="none"` in SFTConfig to disable
+
+**7. Warning: "Gemma3nForConditionalGeneration does not accept `num_items_in_batch`"**
+- **This is expected and not an error!**
+- It's an informational message from Unsloth about gradient accumulation
+- Training will work correctly, just slightly less accurate gradient accumulation
+- You can safely ignore this warning
+- The warning has been suppressed in the latest version
+
+---
+
+## 📁 Repository Structure
 
 ```
-.
-├── requirements.txt          # Dependencies
-├── README.md                 # This file
+gemma3-testing/
+├── gemma3_finetune_unsloth.py      # Main fine-tuning script
+├── dataset.py                       # Dataset download/preparation
+├── requirements.txt                 # Python dependencies
+├── setup.sh                         # Environment setup
+├── README.md                        # This file
+│
+├── scripts/
+│   ├── finetune_gemma3n_unsloth.sh # Training wrapper script
+│   ├── run_inference_unsloth.py    # Batch inference
+│   └── zero*.json                  # DeepSpeed configs (optional)
+│
+├── eval/
+│   └── eval_gemma3n.py             # Evaluation script
+│
 ├── utils/
-│   ├── __init__.py
-│   ├── config.py             # AppConfig and dtype parser
-│   ├── logging_utils.py      # Logging setup
-│   ├── model_utils.py        # Model/processor loading
-│   ├── prompt_utils.py       # Chat message builders
-│   ├── video_utils.py        # Video frame sampling
-│   ├── dataset_utils.py      # JSONL dataset loader
-│   ├── inference.py          # Inference functions
-│   ├── finetune.py           # Fine-tuning with TRL + PEFT
-│   ├── load_dataset.py       # QVED video downloader
-│   ├── filter_ground_truth.py # Annotation filtering
-│   ├── convert_dataset.py    # QVED to Gemma converter
-│   ├── plot_training_stats.py # Training visualization
-│   └── hf_upload.py          # HuggingFace model upload
-└── scripts/
-    ├── run_inference.py      # Inference CLI
-    ├── run_finetune.py       # Fine-tuning CLI
-    ├── initialize_dataset.sh # Complete dataset setup
-    ├── verify_setup.sh       # Setup verification
-    ├── quick_setup.sh        # One-command install & setup
-    └── plot_training.sh      # Training plots wrapper
+│   ├── infer_qved.py               # Single video inference
+│   ├── plot_training_stats.py      # Visualization tools
+│   └── ...                          # Other utilities
+│
+├── docs/
+│   └── FINETUNE_GUIDE.md           # Comprehensive guide
+│
+├── dataset/                         # Created by dataset.py
+│   ├── qved_train.json
+│   ├── qved_val.json
+│   └── qved_test.json
+│
+├── videos/                          # Downloaded videos
+│   ├── 00000340.mp4
+│   └── ...
+│
+├── outputs/                         # Training outputs
+│   └── gemma3n_finetune_*/
+│
+└── results/                         # Evaluation results
+    └── eval_*.json
 ```
 
 ---
 
-## Dataset Format
+## ✨ Key Features
 
-Create a **JSONL** file where each line is a JSON object:
-
-### Text-only sample:
-
-```json
-{
-  "prompt": "What is AI?",
-  "response": "AI stands for Artificial Intelligence..."
-}
-```
-
-### Image sample:
-
-```json
-{
-  "image_path": "images/cat.jpg",
-  "prompt": "What animal is this?",
-  "response": "This is a cat."
-}
-```
-
-### Video sample:
-
-```json
-{
-  "video_path": "videos/running.mp4",
-  "prompt": "Describe the action.",
-  "response": "A person is running in a park."
-}
-```
-
-**Notes:**
-
-- Paths can be absolute or relative to the JSONL file location.
-- The dataset will automatically load images/videos during training.
-- Missing keys are handled gracefully (e.g., text-only samples won't load images).
+- ✅ **Unsloth FastVisionModel:** 2× faster training with LoRA
+- ✅ **Efficient Video Processing:** numpy.linspace frame extraction
+- ✅ **Local Dataset Support:** No re-downloading during training
+- ✅ **WandB Integration:** Real-time training metrics
+- ✅ **Automatic Model Merging:** Ready-to-use merged models
+- ✅ **Comprehensive Evaluation:** BLEU, ROUGE metrics
+- ✅ **Production Ready:** Clean scripts, error handling
+- ✅ **Well Documented:** Complete guides and examples
 
 ---
 
-## Advanced Usage
+## 📚 Documentation
 
-### Quantization
+- **[FINETUNE_GUIDE.md](docs/FINETUNE_GUIDE.md)** - Complete fine-tuning guide
+- **Model:** [unsloth/gemma-3n-E4B-it](https://huggingface.co/unsloth/gemma-3n-E4B-it)
+- **Dataset:** [EdgeVLM-Labs/QVED-Test-Dataset](https://huggingface.co/datasets/EdgeVLM-Labs/QVED-Test-Dataset)
+- **Unsloth:** [https://github.com/unslothai/unsloth](https://github.com/unslothai/unsloth)
 
-Run inference with 4-bit quantization to save memory:
+---
+
+## 🎓 Usage Examples
+
+### Complete Workflow
 
 ```bash
-python scripts/run_inference.py \
-  --mode text \
-  --prompt "Hello!" \
-  --quant 4bit
+# 1. Setup (one-time)
+bash setup.sh && conda activate gemma3n
+wandb login && huggingface-cli login
+
+# 2. Prepare dataset
+python dataset.py all --max-per-class 10
+
+# 3. Fine-tune
+bash scripts/finetune_gemma3n_unsloth.sh
+
+# 4. Evaluate (50 samples)
+python eval/eval_gemma3n.py \
+    --model_path outputs/gemma3n_finetune_*_merged_16bit \
+    --eval_json dataset/qved_val.json \
+    --max_samples 50
+
+# 5. Test inference
+python utils/infer_qved.py \
+    --model_path outputs/gemma3n_finetune_*_merged_16bit \
+    --video_path videos/00000340.mp4
 ```
 
-### Custom Sampling
-
-Sample 16 frames at 2 FPS:
+### Custom Dataset
 
 ```bash
-python scripts/run_inference.py \
-  --mode video \
-  --video_path video.mp4 \
-  --num_frames 16 \
-  --fps 2.0 \
-  --prompt "Analyze the video"
-```
+# Prepare your own dataset JSON:
+# [{"video": "path/to/video.mp4", "conversations": [{"from": "human", "value": "..."}, {"from": "gpt", "value": "..."}]}]
 
-### CPU Inference
-
-```bash
-python scripts/run_inference.py \
-  --mode text \
-  --prompt "Test" \
-  --device cpu \
-  --dtype fp32
-```
-
-### Fine-Tuning with LoRA (no quantization)
-
-```bash
-python scripts/run_finetune.py \
-  --train_jsonl data/train.jsonl \
-  --output_dir outputs/lora \
-  --method lora \
-  --quant none \
-  --dtype bf16 \
-  --epochs 2
-```
-
-### Verbose Logging
-
-```bash
-python scripts/run_inference.py --mode text --prompt "Test" -vv
+python gemma3_finetune_unsloth.py \
+    --train_json my_dataset/train.json \
+    --val_json my_dataset/val.json \
+    --output_dir outputs/my_model \
+    --num_epochs 5
 ```
 
 ---
 
-## Troubleshooting
+## 🚀 Performance
 
-### Issue: `bitsandbytes` not found
+**Training Speed (A100 80GB):**
+- Base model loading: ~30 seconds
+- Training: ~15 samples/minute with batch=1, grad_accum=4
+- 1 epoch on 420 samples: ~30 minutes
+- Full 3 epochs: ~1.5 hours
 
-**Solution:**
+**Memory Usage:**
+- LoRA training: ~24GB VRAM
+- Inference: ~16GB VRAM (merged model)
+- Inference: ~8GB VRAM (4-bit quantized)
 
-```bash
-pip install bitsandbytes
-```
-
-If you're on Windows or have issues, see [bitsandbytes installation guide](https://github.com/bitsandbytes-foundation/bitsandbytes#installation).
-
-### Issue: `decord` not installed
-
-**Solution:**
-
-```bash
-pip install decord
-```
-
-Alternatively, use `--video_method opencv` (the default).
-
-### Issue: CUDA out of memory
-
-**Solutions:**
-
-1. Use 4-bit quantization: `--quant 4bit`
-2. Reduce batch size: `--batch_size 1 --grad_accum 16`
-3. Reduce `--max_seq_len` (default 2048)
-4. Sample fewer frames: `--num_frames 4`
-
-### Issue: Model is gated or requires authentication
-
-**Solution:**
-
-1. Accept the license: [https://huggingface.co/google/gemma-3n-E2B](https://huggingface.co/google/gemma-3n-E2B)
-2. Log in:
-   ```bash
-   huggingface-cli login
-   ```
-
-### Issue: `trust_remote_code` error
-
-**Solution:**
-Gemma 3n uses custom modeling code. The scripts automatically set `trust_remote_code=True`. If you modify the code, ensure this flag is set.
-
-### Issue: Video frames not loading
-
-**Causes:**
-
-- File path incorrect
-- Video codec not supported by OpenCV
-
-**Solutions:**
-
-1. Verify file exists: `ls path/to/video.mp4`
-2. Try decord: `--video_method decord`
-3. Convert video to a common format (e.g., H.264 MP4)
-
-### Issue: Training loss is NaN
-
-**Solutions:**
-
-- Lower learning rate: `--lr 1e-4`
-- Check dataset quality (ensure responses aren't empty)
-- Ensure images/videos load correctly (check logs)
+**Model Sizes:**
+- LoRA adapter: ~600MB
+- Merged 16-bit: ~16GB
+- Merged 4-bit: ~4GB (optional)
 
 ---
 
-## References
+## 🤝 Contributing
 
-### Official Documentation
-
-- **Gemma 3n Overview**: [https://ai.google.dev/gemma/docs/gemma-3n](https://ai.google.dev/gemma/docs/gemma-3n)
-- **Video Understanding**: [https://ai.google.dev/gemma/docs/capabilities/vision/video-understanding](https://ai.google.dev/gemma/docs/capabilities/vision/video-understanding)
-- **Audio (Optional)**: [https://ai.google.dev/gemma/docs/capabilities/audio](https://ai.google.dev/gemma/docs/capabilities/audio)
-
-### Model Cards
-
-- **Gemma 3n-E2B**: [https://huggingface.co/google/gemma-3n-E2B](https://huggingface.co/google/gemma-3n-E2B)
-- **Gemma 3n-E4B**: [https://huggingface.co/google/gemma-3n-E4B](https://huggingface.co/google/gemma-3n-E4B)
-
-### Fine-Tuning Guides
-
-- **Vision QLoRA**: [https://ai.google.dev/gemma/docs/core/huggingface_vision_finetune_qlora](https://ai.google.dev/gemma/docs/core/huggingface_vision_finetune_qlora)
-- **Text QLoRA**: [https://ai.google.dev/gemma/docs/core/huggingface_text_finetune_qlora](https://ai.google.dev/gemma/docs/core/huggingface_text_finetune_qlora)
-
-### Libraries
-
-- **Transformers**: [https://huggingface.co/docs/transformers/](https://huggingface.co/docs/transformers/)
-- **Chat Templates**: [https://huggingface.co/docs/transformers/en/chat_templating](https://huggingface.co/docs/transformers/en/chat_templating)
-- **TRL**: [https://huggingface.co/docs/trl/](https://huggingface.co/docs/trl/)
-- **PEFT**: [https://huggingface.co/docs/peft/](https://huggingface.co/docs/peft/)
-
-### Ecosystem
-
-- **Gemma 3n Announcement**: [https://huggingface.co/blog/gemma3n](https://huggingface.co/blog/gemma3n)
-
----
-
-## License
-
-This project is provided as-is for educational and research purposes. Gemma models are subject to their own licenses—please review them on Hugging Face before use.
-
----
-
-## Contributing
-
-Contributions are welcome! Please:
-
+Contributions welcome! Please:
 1. Fork the repository
 2. Create a feature branch
-3. Submit a pull request with clear descriptions
+3. Make your changes
+4. Submit a pull request
 
 ---
 
-## Contact
+## 📄 License
 
-For issues or questions, please open an issue on GitHub.
+See [LICENSE](LICENSE) file for details.
 
 ---
 
-**Happy fine-tuning! 🚀**
+## 🙏 Acknowledgments
+
+- **Unsloth AI:** For FastVisionModel and efficient training
+- **Google:** For Gemma-3N models
+- **EdgeVLM Labs:** For QVED dataset
+- **HuggingFace:** For transformers and datasets
+
+---
+
+## 📞 Support
+
+- **Issues:** [GitHub Issues](https://github.com/EdgeVLM-Labs/gemma3-testing/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/EdgeVLM-Labs/gemma3-testing/discussions)
+- **Email:** Contact repository maintainers
+
+---
+
+**🎯 Ready to get started?** Run `bash setup.sh` and follow the [Quick Start](#-quick-start) guide!
+```
+
+### Batch Inference
+
+```bash
+# Prepare test videos
+python dataset.py copy --num-videos 20 --output batch_test
+
+# Run batch processing
+python gemma3n_batch_inference.py \
+    --model outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit \
+    --video_folder batch_test \
+    --output results/batch_results.csv
+```
+
+### Custom Prompt
+
+```bash
+python scripts/run_inference_unsloth.py \
+    --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit \
+    --video_path test.mp4 \
+    --instruction "Analyze the exercise form and provide corrections" \
+    --temperature 0.7
+```
+
+---
+
+## ⚙️ Configuration
+
+### Key Hyperparameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--batch_size` | 1 | Per-device batch size |
+| `--gradient_accumulation` | 4 | Gradient accumulation steps |
+| `--learning_rate` | 2e-4 | Learning rate |
+| `--num_epochs` | 3 | Training epochs |
+| `--lora_r` | 64 | LoRA rank |
+| `--lora_alpha` | 128 | LoRA alpha |
+| `--num_frames` | 8 | Frames per video |
+| `--max_seq_length` | 50000 | Maximum sequence length |
+
+### Training Strategies
+
+**Quick Test:**
+```bash
+python gemma3_finetune_unsloth.py --num_epochs 1 --lora_r 32
+```
+
+**Production:**
+```bash
+python gemma3_finetune_unsloth.py --num_epochs 5 --lora_r 128 --lora_alpha 256
+```
+
+**Memory Constrained (<24GB):**
+```bash
+python gemma3_finetune_unsloth.py --load_in_4bit --batch_size 1 --num_frames 4
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Dataset Issues
+
+**Dataset not found:**
+```bash
+python dataset.py download --max-per-class 5
+python dataset.py prepare
+```
+
+**Video file not found:**
+```bash
+# Check paths in JSON are relative to dataset/
+head -n 20 dataset/qved_train.json
+```
+
+### Memory Issues
+
+**CUDA out of memory:**
+```bash
+# Enable 4-bit quantization
+python gemma3_finetune_unsloth.py --load_in_4bit ...
+
+# Or reduce memory usage
+python gemma3_finetune_unsloth.py \
+    --batch_size 1 \
+    --gradient_accumulation 8 \
+    --num_frames 4
+```
+
+### Installation Issues
+
+**Module not found:**
+```bash
+conda activate gemma3n
+pip install -r requirements.txt --force-reinstall
+```
+
+**Unsloth import error:**
+```bash
+pip install --no-deps --upgrade timm
+pip install --upgrade unsloth unsloth_zoo
+pip install transformers==4.56.2
+pip install trl==0.22.2
+```
+
+**Environment not found:**
+```bash
+# Re-run setup
+bash setup.sh
+conda activate gemma3n
+```
+
+---
+
+## 📁 Repository Structure
+
+```
+gemma3-testing/
+├── dataset.py                       # Dataset management (download, prepare, clean)
+├── gemma3_finetune_unsloth.py      # Main training script
+├── gemma3n_batch_inference.py      # Batch inference
+├── setup.sh                         # Environment setup
+├── requirements.txt                 # Dependencies
+├── scripts/
+│   ├── finetune_gemma3n_unsloth.sh # Training wrapper
+│   └── run_inference_unsloth.py    # Inference script
+├── docs/
+│   ├── FINETUNE_GUIDE.md           # Complete guide
+│   ├── SETUP_CHECKLIST.md          # Setup checklist
+│   └── QUICKSTART.md               # Quick start
+├── utils/                          # Utility scripts
+├── gemma3/                         # Gemma-3N implementation
+└── dataset/                        # Your prepared dataset
+    ├── exercise_class_1/
+    ├── qved_train.json
+    ├── qved_val.json
+    └── qved_test.json
+```
+
+---
+
+## 🚀 Features
+
+- ✅ **Efficient LoRA fine-tuning** with Unsloth FastVisionModel
+- ✅ **Local dataset support** - uses your prepared data by default
+- ✅ **Automatic frame extraction** from videos
+- ✅ **4-bit quantization** for limited GPU memory
+- ✅ **Gradient checkpointing** for memory optimization
+- ✅ **WandB integration** for experiment tracking
+- ✅ **Streaming support** for HuggingFace datasets
+- ✅ **Dataset quality filtering** (resolution, brightness, sharpness)
+- ✅ **Batch inference** for multiple videos
+
+---
+
+## 📚 Documentation
+
+- **[Fine-tuning Guide](docs/FINETUNE_GUIDE.md)** - Complete training and inference guide
+- [Setup Checklist](docs/SETUP_CHECKLIST.md) - Step-by-step setup with checkboxes
+- [Quick Start](docs/QUICKSTART.md) - Original quick start guide
+- [Gemma3 Implementation](gemma3/README.md) - Architecture details
+
+---
+
+## 🎓 Usage Examples
+
+### Complete Workflow
+
+```bash
+# Setup (one time)
+bash setup.sh
+conda activate gemma3n
+wandb login
+huggingface-cli login
+
+# Prepare data (one time)
+python dataset.py download --max-per-class 10
+python dataset.py prepare
+
+# Train
+bash scripts/finetune_gemma3n_unsloth.sh
+
+# Test
+python scripts/run_inference_unsloth.py \
+    --model_path outputs/gemma3n_finetune_*/merged_16bit \
+    --video_path dataset/exercise_class_1/video.mp4
+```
+
+### Experiment with Different Configurations
+
+```bash
+# Try different learning rates
+for lr in 1e-4 2e-4 5e-4; do
+    python gemma3_finetune_unsloth.py \
+        --learning_rate $lr \
+        --wandb_run_name "lr_${lr}" \
+        --output_dir "outputs/exp_lr_${lr}"
+done
+```
+
+---
+
+## 📊 Expected Performance
+
+| Configuration | GPU | Training Time (500 samples, 3 epochs) |
+|--------------|-----|---------------------------------------|
+| Default | A100 40GB | ~30-45 min |
+| 4-bit | RTX 4090 | ~45-60 min |
+| Large batch | A100 80GB | ~20-30 min |
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! Please:
+- Follow existing code style
+- Update documentation for new features
+- Test changes before submitting
+
+---
+
+## 📄 License
+
+See [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- [Gemma](https://ai.google.dev/gemma) by Google
+- [Unsloth](https://github.com/unslothai/unsloth) for efficient fine-tuning
+- [QVED Dataset](https://huggingface.co/datasets/EdgeVLM-Labs/QVED-Test-Dataset)
+
+---
+
+## 📧 Support
+
+- **Documentation:** [docs/FINETUNE_GUIDE.md](docs/FINETUNE_GUIDE.md)
+- **Issues:** [GitHub Issues](https://github.com/EdgeVLM-Labs/gemma3-testing/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/EdgeVLM-Labs/gemma3-testing/discussions)
