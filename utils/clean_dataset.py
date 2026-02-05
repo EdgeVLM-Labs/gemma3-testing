@@ -195,7 +195,7 @@ def default_stats(exercise_name: str) -> dict:
 # -------------------------------
 # Gemma3N-E2B inference
 # -------------------------------
-def run_gemma3n_inference(model, tokenizer, video_path: Path, num_frames=20):
+def run_gemma3n_inference(model, processor, video_path: Path, num_frames=16):
     """Run Gemma3N-E2B inference on a sampled subset of frames."""
     cap = cv2.VideoCapture(str(video_path))
     frames = []
@@ -216,13 +216,19 @@ def run_gemma3n_inference(model, tokenizer, video_path: Path, num_frames=20):
     from PIL import Image
     pil_frames = [Image.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)) for f in frames]
 
-    messages = [{"role":"user", "content":[{"type":"image", "image":img} for img in pil_frames] + [{"type":"text","text":"Describe the exercise."}]}]
-    inputs = tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt").to("cuda")
+    # Format prompt for Gemma3N
+    prompt = "Describe the exercise form shown in this video."
+    
+    # Use processor to prepare inputs
+    inputs = processor(text=prompt, images=pil_frames, return_tensors="pt").to("cuda")
 
-    from transformers import TextStreamer
-    streamer = TextStreamer(tokenizer, skip_prompt=True)
-    output = model.generate(**inputs, max_new_tokens=256, temperature=0.1, do_sample=True, streamer=streamer)
-    return output
+    # Generate output
+    import torch
+    with torch.no_grad():
+        output_ids = model.generate(**inputs, max_new_tokens=256, temperature=0.1, do_sample=True)
+        output_text = processor.batch_decode(output_ids, skip_special_tokens=True)[0]
+    
+    return output_text
 
 # -------------------------------
 # Main cleaning loop
@@ -233,11 +239,17 @@ def clean_dataset(source_root: Path, destination_root: Path, run_inference=False
 
     # Load Gemma3N if requested
     if run_inference:
-        from unsloth import FastModel
-        model, tokenizer = FastModel.from_pretrained("google/gemma-3n-E2B")
+        from unsloth import FastVisionModel
+        model, tokenizer = FastVisionModel.from_pretrained(
+            "google/gemma-3n-E2B-it",
+            load_in_4bit=True,
+            use_gradient_checkpointing="unsloth"
+        )
+        # Use tokenizer as processor for Gemma3N
+        processor = tokenizer
         print("[INFO] Gemma3N-E2B model loaded for inference")
     else:
-        model = tokenizer = None
+        model = processor = None
 
     overall_stats = []
     totals = default_stats("ALL_EXERCISES")
@@ -278,7 +290,7 @@ def clean_dataset(source_root: Path, destination_root: Path, run_inference=False
                     copy_video_with_structure(video_path, source_root, destination_root)
                     stats["accepted_videos"] += 1
                     if run_inference:
-                        result = run_gemma3n_inference(model, tokenizer, video_path)
+                        result = run_gemma3n_inference(model, processor, video_path)
                         tqdm.write(f"[Gemma3N Output] {file}: {result}")
                 else:
                     stats["rejected_videos"] += 1
