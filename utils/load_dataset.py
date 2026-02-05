@@ -19,7 +19,7 @@ from pathlib import Path
 from huggingface_hub import list_repo_files, hf_hub_download
 
 # ------------------ Configuration ------------------ #
-REPO_ID = "EdgeVLM-Labs/QVED-Test-Dataset"  # Dataset repository
+REPO_ID = "EdgeVLM-Labs/QEVD-fine-grained-feedback-cleaned"  # Dataset repository
 LOCAL_DIR = Path("dataset")                  # Local download directory
 MAX_PER_CLASS = 5                            # Number of videos per class
 FILE_EXT = ".mp4"                            # Video file extension

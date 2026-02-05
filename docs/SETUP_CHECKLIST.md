@@ -114,7 +114,7 @@ bash scripts/verify_qved_setup.sh
 ### 11. Test Inference (Optional)
 ```bash
 python gemma3n_batch_inference.py \
-  --model unsloth/gemma-3n-E4B-it \
+  --model google/gemma-3n-E2B-it \
   --video_folder sample_videos \
   --output results/test.csv \
   --limit 1
@@ -186,7 +186,7 @@ bash scripts/finetune_qved.sh
 ```bash
 # Single video inference
 python utils/infer_qved.py \
-  --model_path unsloth/gemma-3n-E4B-it \
+  --model_path google/gemma-3n-E2B-it \
   --video_path sample_videos/00000340.mp4
 
 # Batch inference on test set with evaluation report

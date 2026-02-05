@@ -157,7 +157,7 @@ def upload_model_to_hf(
     if has_adapter:
         print("\n  # For LoRA adapters:")
         print(f"  from peft import PeftModel")
-        print(f"  base_model, processor = FastVisionModel.from_pretrained('unsloth/gemma-3n-E4B-it')")
+        print(f"  base_model, processor = FastVisionModel.from_pretrained('google/gemma-3n-E2B-it')")
         print(f"  model = PeftModel.from_pretrained(base_model, '{repo_id}')")
     print(f"{'='*60}")
 

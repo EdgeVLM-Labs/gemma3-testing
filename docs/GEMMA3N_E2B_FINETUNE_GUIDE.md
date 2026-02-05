@@ -41,9 +41,8 @@ This guide covers fine-tuning the `google/gemma-3n-E2B-it` vision-language model
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Prepare QVED dataset
-python dataset.py download --max-per-class 5
-python dataset.py prepare
+# 2. Initialize dataset (interactive)
+bash scripts/initialize_dataset.sh
 
 # 3. Start fine-tuning
 bash scripts/finetune_gemma3n_e2b_trl.sh
@@ -145,14 +144,18 @@ JSON files follow this structure:
 ### Prepare Your Dataset
 
 ```bash
+# Initialize dataset (interactive)
+bash scripts/initialize_dataset.sh
+
+# Or manually:
 # Download QVED dataset from HuggingFace
-python dataset.py download --max-per-class 5
+python utils/load_dataset.py 5
 
 # Create train/val/test splits
-python dataset.py prepare
+python utils/qved_from_fine_labels.py
 
-# Verify dataset integrity
-python dataset.py verify
+# Verify dataset files exist
+ls -la dataset/qved_*.json
 ```
 
 ---
@@ -465,7 +468,7 @@ outputs/gemma3n-e2b-qved-ft/
 ls -la dataset/qved*.json
 
 # Regenerate dataset
-python dataset.py prepare
+bash scripts/initialize_dataset.sh
 
 # Check JSON format
 python -c "import json; json.load(open('dataset/qved_train.json'))"
@@ -575,12 +578,14 @@ gemma3-testing/
 │   ├── qved_val.json                 # Validation annotations
 │   └── qved_test.json                # Test annotations
 ├── finetune_gemma3n_e2b_trl.py       # Training script
-├── dataset.py                         # Dataset preparation
 ├── requirements.txt                   # Python dependencies
 ├── scripts/
+│   ├── initialize_dataset.sh         # Dataset preparation
 │   ├── finetune_gemma3n_e2b_trl.sh   # Training wrapper
 │   └── run_inference_transformers.sh # Inference + evaluation
 ├── utils/
+│   ├── load_dataset.py               # Download videos
+│   ├── qved_from_fine_labels.py      # Create splits
 │   ├── test_inference_transformers.py # Inference script
 │   └── generate_test_report.py       # Evaluation report
 └── docs/
@@ -593,7 +598,7 @@ gemma3-testing/
 - [TRL Documentation](https://huggingface.co/docs/trl/)
 - [PEFT/LoRA Documentation](https://huggingface.co/docs/peft/)
 - [Transformers Documentation](https://huggingface.co/docs/transformers/)
-- [QVED Dataset](https://huggingface.co/datasets/EdgeVLM-Labs/QVED-Test-Dataset)
+- [QVED Dataset](https://huggingface.co/datasets/EdgeVLM-Labs/QEVD-fine-grained-feedback-cleaned)
 
 ### Training Tips
 

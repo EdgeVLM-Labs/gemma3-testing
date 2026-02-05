@@ -7,7 +7,7 @@ Based on the working batch inference approach.
 
 Usage:
     python utils/infer_qved.py \
-        --model_path unsloth/gemma-3n-E4B-it \
+        --model_path google/gemma-3n-E2B-it \
         --video_path sample_videos/00000340.mp4 \
         --prompt "Analyze the exercise form shown in this video"
 """
@@ -75,7 +75,7 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
     return frames
 
 
-def load_model(model_name: str = "unsloth/gemma-3n-E4B-it", device: str = "cuda"):
+def load_model(model_name: str = "google/gemma-3n-E2B-it", device: str = "cuda"):
     """Load Gemma-3N model using Unsloth FastVisionModel."""
     print(f"📦 Loading model: {model_name}...")
     
@@ -143,13 +143,13 @@ def do_inference(
 def main():
     parser = argparse.ArgumentParser(
         description="QVED Inference with Google/Gemma-3n (Unsloth)",
-        epilog="Example: python utils/infer_qved.py --model_path unsloth/gemma-3n-E4B-it --video_path sample_videos/00000340.mp4"
+        epilog="Example: python utils/infer_qved.py --model_path google/gemma-3n-E2B-it --video_path sample_videos/00000340.mp4"
     )
     parser.add_argument(
         "--model_path",
         type=str,
-        default="unsloth/gemma-3n-E4B-it",
-        help="HuggingFace model ID (e.g., unsloth/gemma-3n-E4B-it, unsloth/gemma-3n-E2B-it)"
+        default="google/gemma-3n-E2B-it",
+        help="HuggingFace model ID (e.g., google/gemma-3n-E2B-it)"
     )
     parser.add_argument(
         "--video_path",

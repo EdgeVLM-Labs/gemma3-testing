@@ -21,9 +21,8 @@ Complete guide for fine-tuning Gemma-3N model using Unsloth with your prepared Q
 bash setup.sh
 conda activate gemma3n
 
-# 2. Prepare dataset (one time)
-python dataset.py download --max-per-class 5
-python dataset.py prepare
+# 2. Initialize dataset (one time - interactive)
+bash scripts/initialize_dataset.sh
 
 # 3. Fine-tune model
 bash scripts/finetune_gemma3n_unsloth.sh
@@ -78,22 +77,34 @@ huggingface-cli login
 
 ## 📊 Dataset Preparation
 
-### Using dataset.py (Recommended)
+### Using initialize_dataset.sh (Recommended)
 
-Your `dataset.py` script handles downloading and preparing the QVED dataset:
+The interactive initialization script orchestrates the complete dataset preparation pipeline:
 
 ```bash
-# Download videos from HuggingFace Hub
-python dataset.py download --max-per-class 5
+bash scripts/initialize_dataset.sh
+```
+
+This will:
+1. Download videos from HuggingFace Hub (prompts for count per class)
+2. Optionally filter ground truth labels
+3. Optionally augment videos
+4. Generate train/val/test splits
+
+**For manual control**, use individual scripts:
+
+```bash
+# Download videos
+python utils/load_dataset.py 5  # 5 videos per class
+
+# Filter ground truth
+python utils/filter_ground_truth.py
+
+# Augment videos (optional)
+python utils/augment_videos.py
 
 # Create train/val/test splits
-python dataset.py prepare
-
-# Optional: Clean low-quality videos
-python dataset.py clean
-
-# Optional: Copy videos for inference
-python dataset.py copy --num-videos 10 --output test_videos
+python utils/qved_from_fine_labels.py
 ```
 
 This creates:
@@ -168,7 +179,7 @@ bash scripts/finetune_gemma3n_unsloth.sh --hf
 
 # Or with Python
 python gemma3_finetune_unsloth.py \
-    --hf_dataset EdgeVLM-Labs/QVED-Test-Dataset \
+    --hf_dataset EdgeVLM-Labs/QEVD-fine-grained-feedback-cleaned \
     --num_samples 500 \
     --batch_size 1 \
     --gradient_accumulation 4
@@ -225,13 +236,10 @@ python scripts/run_inference_unsloth.py \
 Process multiple videos:
 
 ```bash
-# Prepare test videos
-python dataset.py copy --num-videos 20 --output batch_test
-
-# Run batch inference
+# Run batch inference on sample videos
 python gemma3n_batch_inference.py \
     --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit \
-    --video_folder batch_test \
+    --video_folder sample_videos \
     --output results/batch_results.csv
 ```
 
@@ -356,9 +364,12 @@ outputs/
 
 **Error: "Dataset not found"**
 ```bash
-# Solution: Prepare the dataset first
-python dataset.py download --max-per-class 5
-python dataset.py prepare
+# Solution: Initialize the dataset first
+bash scripts/initialize_dataset.sh
+
+# Or manually prepare
+python utils/load_dataset.py 5
+python utils/qved_from_fine_labels.py
 
 # Verify files exist
 ls -la dataset/qved_train.json
@@ -467,13 +478,17 @@ gemma3-testing/
 │   ├── qved_train.json             # Training data
 │   ├── qved_val.json               # Validation data
 │   └── qved_test.json              # Test data
-├── dataset.py                       # Dataset preparation
 ├── gemma3_finetune_unsloth.py      # Main training script
 ├── setup.sh                         # Environment setup
 ├── requirements.txt                 # Dependencies
 ├── scripts/
+│   ├── initialize_dataset.sh       # Dataset preparation
 │   ├── finetune_gemma3n_unsloth.sh # Training wrapper
 │   └── run_inference_unsloth.py    # Inference script
+├── utils/
+│   ├── load_dataset.py             # Download videos
+│   ├── qved_from_fine_labels.py    # Create splits
+│   └── augment_videos.py           # Data augmentation
 └── docs/
     └── FINETUNE_GUIDE.md           # This file
 ```
@@ -490,9 +505,9 @@ gemma3-testing/
 
 ### Related Documentation
 
-- [QVED Dataset Repository](https://huggingface.co/datasets/EdgeVLM-Labs/QVED-Test-Dataset)
+- [QVED Dataset Repository](https://huggingface.co/datasets/EdgeVLM-Labs/QEVD-fine-grained-feedback-cleaned)
 - [Unsloth Documentation](https://docs.unsloth.ai/)
-- [Gemma Model Card](https://huggingface.co/google/gemma-3n-E4B-it)
+- [Gemma Model Card](https://huggingface.co/google/gemma-3n-E2B-it)
 - [LoRA Paper](https://arxiv.org/abs/2106.09685)
 
 ---
@@ -505,7 +520,7 @@ gemma3-testing/
 2. **Monitor training** - Watch loss curve in WandB
 3. **Validate regularly** - Use validation set to check for overfitting
 4. **Experiment** - Try different learning rates and LoRA ranks
-5. **Clean data** - Use `python dataset.py clean` for better quality
+5. **Augment data** - Use augmentation to increase dataset size
 
 ### For Production Deployment
 

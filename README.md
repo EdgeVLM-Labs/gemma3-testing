@@ -1,8 +1,8 @@
 # Gemma-3N Fine-tuning for Video Understanding
 
-Fine-tune Google's **Gemma-3N (unsloth/gemma-3n-E2B-it)** model on video datasets using **Unsloth FastVisionModel** for efficient LoRA training. Optimized for exercise form analysis and video understanding tasks.
+Fine-tune Google's **Gemma-3N (google/gemma-3n-E2B-it)** model on video datasets using **Unsloth FastVisionModel** for efficient LoRA training. Optimized for exercise form analysis and video understanding tasks.
 
-**🎯 Model:** `unsloth/gemma-3n-E4B-it` | **📊 Dataset:** EdgeVLM-Labs/QVED-Test-Dataset | **⚡ Framework:** Unsloth
+**🎯 Model:** `google/gemma-3n-E2B-it` | **📊 Dataset:** EdgeVLM-Labs/QEVD-fine-grained-feedback-cleaned | **⚡ Framework:** Unsloth
 
 ---
 
@@ -60,11 +60,10 @@ conda activate gemma3n
 #   huggingface-cli login
 #   wandb login
 
-# 3. Prepare dataset
-python dataset.py download --max-per-class 5
-python dataset.py prepare
+# 3. Initialize and prepare dataset (interactive)
+bash scripts/initialize_dataset.sh
 
-# 4. Fine-tune model (uses unsloth/gemma-3n-E4B-it)
+# 4. Fine-tune model (uses google/gemma-3n-E2B-it)
 bash scripts/finetune_gemma3n_unsloth.sh
 
 # 6. Run inference
@@ -273,7 +272,72 @@ For complete troubleshooting steps and solutions, see **[SETUP_TROUBLESHOOTING.m
 
 ## 📊 Dataset Management
 
-The `dataset.py` script manages the **QVED (Quality Video Exercise Dataset)** from EdgeVLM-Labs/QVED-Test-Dataset:
+### Interactive Dataset Initialization (Recommended)
+
+The **QVED (Quality Video Exercise Dataset)** from EdgeVLM-Labs/QEVD-fine-grained-feedback-cleaned can be initialized using an interactive script that guides you through the entire pipeline:
+
+```bash
+bash scripts/initialize_dataset.sh
+```
+
+**What it does:**
+1. **Step 1:** Download videos from HuggingFace
+   - Prompts for number of videos per exercise class
+   - Option to use parallel downloads for faster processing
+   
+2. **Step 2:** Filter ground truth labels (Optional)
+   - Processes and filters the downloaded labels
+   
+3. **Step 3:** Dataset augmentation (Optional)
+   - Creates additional training samples with transformations
+   - Applied BEFORE generating train/val/test splits
+   
+4. **Step 4:** Generate train/val/test splits
+   - Creates 60/20/20 split automatically
+   - Outputs:
+     - `dataset/qved_train.json` - Training set (60%)
+     - `dataset/qved_val.json` - Validation set (20%)
+     - `dataset/qved_test.json` - Test set (20%)
+     - `dataset/qved_feedbacks_train.json` - Training feedbacks
+     - `dataset/qved_feedbacks_val.json` - Validation feedbacks
+     - `dataset/qved_feedbacks_test.json` - Test feedbacks
+
+**Output Format:**
+Each JSON entry contains:
+```json
+{
+  "video": "bicep_curl/00000340.mp4",
+  "conversations": [
+    {"from": "human", "value": "Analyze this exercise..."},
+    {"from": "gpt", "value": "The form shows..."}
+  ]
+}
+```
+
+### Manual Dataset Operations
+
+For advanced users who need individual control:
+
+**Download videos:**
+```bash
+python utils/load_dataset.py 5  # Download 5 videos per class
+python utils/load_dataset.py 20 --parallel  # 20 videos with parallel downloads
+```
+
+**Filter ground truth:**
+```bash
+python utils/filter_ground_truth.py
+```
+
+**Augment dataset:**
+```bash
+python utils/augment_videos.py
+```
+
+**Generate splits:**
+```bash
+python utils/qved_from_fine_labels.py
+```
 
 ### Create Test Dataset from Your Videos
 
@@ -292,69 +356,47 @@ python create_test_json.py \
 
 This generates a test dataset JSON that can be used with the inference scripts.
 
-### Download QVED Dataset
+### Verify QVED Setup
 
-For training and evaluation:
-
-```bash
-# Download 5 videos per exercise class (fast - for testing)
-python dataset.py download --max-per-class 5
-
-# Download more videos (for production training)
-python dataset.py download --max-per-class 20
-
-# Download all available videos
-python dataset.py download
-```
-
-Videos are saved to `videos/` directory.
-
-### Prepare Train/Val/Test Splits
+Before starting fine-tuning, verify that your dataset and environment are properly configured:
 
 ```bash
-python dataset.py prepare
+bash scripts/verify_qved_setup.sh
 ```
 
-Creates JSON files with 60/20/20 split:
-- `dataset/qved_train.json` - Training set (60%)
-- `dataset/qved_val.json` - Validation set (20%)
-- `dataset/qved_test.json` - Test set (20%)
+**What it checks:**
+1. **Dataset files:** Verifies presence of train/val/test splits and feedback files
+2. **Video files:** Confirms video directories exist with expected content
+3. **Video paths:** Validates all paths in dataset splits point to actual files
+4. **Required scripts:** Checks for fine-tuning and configuration scripts
+5. **Conda environment:** Verifies `mobile_videogpt` environment is available
+6. **GPU availability:** Confirms NVIDIA GPUs are detected and accessible
 
-Each JSON entry contains:
-```json
-{
-  "video": "videos/00000340.mp4",
-  "conversations": [
-    {"from": "human", "value": "Analyze this exercise..."},
-    {"from": "gpt", "value": "The form shows..."}
-  ]
-}
+**Example output:**
 ```
+=========================================
+QVED Finetuning Setup Verification
+=========================================
 
-### Optional: Clean Dataset
+[1] Checking dataset files...
+✓ dataset/qved_train.json found (480 samples)
+✓ dataset/qved_val.json found (160 samples)
+✓ dataset/qved_test.json found (160 samples)
+...
 
-```bash
-# Filter low-quality videos (resolution, brightness, sharpness checks)
-python dataset.py clean
-```
+[3] Verifying video paths in dataset splits...
+✓ Training set: All 480 video paths are valid
+✓ Validation set: All 160 video paths are valid
+✓ Test set: All 160 video paths are valid
 
-### Copy Videos for Testing
-
-```bash
-# Copy subset to flat folder for batch inference
-python dataset.py copy --num-videos 10 --output test_videos
-```
-
-### All-in-One Workflow
-
-```bash
-# Download, prepare, and clean in one command
-python dataset.py all --max-per-class 10
+[6] Checking GPU availability...
+✓ 1 GPU(s) detected
+NVIDIA A100-SXM4-80GB, 81920 MiB
 ```
 
 ---
 
-## 🎯 Fine-tuning (unsloth/gemma-3n-E4B-it)
+## 🎯 Fine-tuning (google/gemma-3n-E2B-it)
 
 ### Method 1: Quick Start (Recommended)
 
@@ -365,7 +407,7 @@ bash scripts/finetune_gemma3n_unsloth.sh
 ```
 
 **Default Configuration:**
-- **Model:** `unsloth/gemma-3n-E4B-it` (4B parameters, instruction-tuned)
+- **Model:** `google/gemma-3n-E2B-it` (2B parameters, instruction-tuned)
 - **Dataset:** Local QVED (`dataset/qved_train.json` + videos in `videos/`)
 - **LoRA:** r=64, alpha=128, dropout=0.0, target_modules=all-linear
 - **Training:** 
@@ -395,7 +437,7 @@ For advanced users who want to customize hyperparameters:
 
 ```bash
 python gemma3_finetune_unsloth.py \
-    --model_name unsloth/gemma-3n-E4B-it \
+    --model_name google/gemma-3n-E2B-it \
     --train_json dataset/qved_train.json \
     --val_json dataset/qved_val.json \
     --output_dir outputs/custom_finetune \
@@ -582,7 +624,7 @@ python utils/infer_qved.py \
 
 # With base model (no fine-tuning)
 python utils/infer_qved.py \
-    --model_path unsloth/gemma-3n-E4B-it \
+    --model_path google/gemma-3n-E2B-it \
     --video_path sample_videos/00000340.mp4 \
     --prompt "What is shown in this video?"
 ```
@@ -762,14 +804,14 @@ python eval/eval_gemma3n.py \
 ```bash
 # Full evaluation
 python eval/eval_gemma3n.py \
-    --model_path unsloth/gemma-3n-E4B-it \
+    --model_path google/gemma-3n-E2B-it \
     --eval_json dataset/qved_val.json \
     --output_file results/eval_base.json \
     --num_frames 8
 
 # Quick test (50 samples)
 python eval/eval_gemma3n.py \
-    --model_path unsloth/gemma-3n-E4B-it \
+    --model_path google/gemma-3n-E2B-it \
     --eval_json dataset/qved_val.json \
     --output_file results/eval_base.json \
     --max_samples 50
@@ -825,7 +867,7 @@ Metrics: BLEU=0.521, ROUGE-L=0.634
 
 ```bash
 # Run both evaluations (limit to 50 samples for quick comparison)
-python eval/eval_gemma3n.py --model_path unsloth/gemma-3n-E4B-it --eval_json dataset/qved_val.json --output_file results/base.json --max_samples 50
+python eval/eval_gemma3n.py --model_path google/gemma-3n-E2B-it --eval_json dataset/qved_val.json --output_file results/base.json --max_samples 50
 python eval/eval_gemma3n.py --model_path outputs/gemma3n_finetune_merged_16bit --eval_json dataset/qved_val.json --output_file results/finetuned.json --max_samples 50
 
 # Compare results manually or use plotting tools
@@ -843,7 +885,7 @@ bash scripts/run_inference.sh \
 
 # Test with base model for comparison
 bash scripts/run_inference.sh \
-    --model_path unsloth/gemma-3n-E4B-it
+    --model_path google/gemma-3n-E2B-it
 
 # Full test set (all samples)
 bash scripts/run_inference.sh \
@@ -898,8 +940,7 @@ python utils/generate_test_report.py \
 
 | Model | Parameters | Context | Use Case |
 |-------|-----------|---------|----------|
-| `unsloth/gemma-3n-E4B-it` | 4B | 50K tokens | **Recommended** - Best balance |
-| `unsloth/gemma-3n-E2B-it` | 2B | 50K tokens | Faster, lower memory |
+| `google/gemma-3n-E2B-it` | 2B | 50K tokens | **Recommended** - Optimized for video understanding |
 
 ### LoRA Hyperparameters
 
@@ -1065,8 +1106,8 @@ gemma3-testing/
 ## 📚 Documentation
 
 - **[FINETUNE_GUIDE.md](docs/FINETUNE_GUIDE.md)** - Complete fine-tuning guide
-- **Model:** [unsloth/gemma-3n-E4B-it](https://huggingface.co/unsloth/gemma-3n-E4B-it)
-- **Dataset:** [EdgeVLM-Labs/QVED-Test-Dataset](https://huggingface.co/datasets/EdgeVLM-Labs/QVED-Test-Dataset)
+- **Model:** [google/gemma-3n-E2B-it](https://huggingface.co/google/gemma-3n-E2B-it)
+- **Dataset:** [EdgeVLM-Labs/QEVD-fine-grained-feedback-cleaned](https://huggingface.co/datasets/EdgeVLM-Labs/QEVD-fine-grained-feedback-cleaned)
 - **Unsloth:** [https://github.com/unslothai/unsloth](https://github.com/unslothai/unsloth)
 
 ---
@@ -1400,7 +1441,7 @@ See [LICENSE](LICENSE) for details.
 
 - [Gemma](https://ai.google.dev/gemma) by Google
 - [Unsloth](https://github.com/unslothai/unsloth) for efficient fine-tuning
-- [QVED Dataset](https://huggingface.co/datasets/EdgeVLM-Labs/QVED-Test-Dataset)
+- [QVED Dataset](https://huggingface.co/datasets/EdgeVLM-Labs/QEVD-fine-grained-feedback-cleaned)
 
 ---
 

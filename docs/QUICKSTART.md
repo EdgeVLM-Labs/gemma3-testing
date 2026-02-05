@@ -24,14 +24,11 @@ hf auth login
 bash finetune_env.sh  # Complete fine-tuning environment setup
 ```
 
-### 2. Download Sample Dataset
+### 2. Initialize Dataset
 
 ```bash
-# Download 5 videos per exercise class
-python dataset.py download
-
-# Create train/val/test splits
-python dataset.py prepare
+# Interactive dataset initialization
+bash scripts/initialize_dataset.sh
 
 # Verify setup
 bash scripts/verify_qved_setup.sh
@@ -89,14 +86,14 @@ bash scripts/run_inference.sh \
 ### Test Pre-trained Model
 ```bash
 python utils/infer_qved.py \
-  --model_path unsloth/gemma-3n-E4B-it \
+  --model_path google/gemma-3n-E2B-it \
   --video_path sample_videos/00000340.mp4
 ```
 
 ### Process Multiple Videos
 ```bash
 python gemma3n_batch_inference.py \
-  --model unsloth/gemma-3n-E4B-it \
+  --model google/gemma-3n-E2B-it \
   --video_folder your_videos/ \
   --output results/results.csv \
   --show_stream  # Watch generation in real-time
@@ -160,4 +157,4 @@ BATCH=4  # instead of 8
 
 - [Gemma-3N Documentation](https://huggingface.co/google/gemma-3n-E2B)
 - [Unsloth Documentation](https://github.com/unslothai/unsloth)
-- [QVED Dataset](https://huggingface.co/datasets/EdgeVLM-Labs/QVED-Test-Dataset)
+- [QVED Dataset](https://huggingface.co/datasets/EdgeVLM-Labs/QEVD-fine-grained-feedback-cleaned)

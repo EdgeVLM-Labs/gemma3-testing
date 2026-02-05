@@ -2,6 +2,24 @@
 
 This folder contains utility scripts for dataset preparation, model training, inference, evaluation, and deployment.
 
+## Quick Start: Dataset Initialization
+
+**Recommended:** Use the interactive initialization script:
+
+```bash
+bash scripts/initialize_dataset.sh
+```
+
+This orchestrates the complete dataset preparation pipeline:
+1. Downloads videos from HuggingFace (with parallel option)
+2. Filters ground truth labels (optional)
+3. Augments videos (optional)
+4. Generates train/val/test splits
+
+**For manual control**, use the individual scripts documented below.
+
+---
+
 ## Table of Contents
 
 - [Utils - Mobile-VideoGPT Utilities](#utils---mobile-videogpt-utilities)
@@ -18,7 +36,7 @@ This folder contains utility scripts for dataset preparation, model training, in
     - [load\_dataset.py](#load_datasetpy)
     - [qved\_from\_fine\_labels.py](#qved_from_fine_labelspy)
     - [filter\_ground\_truth.py](#filter_ground_truthpy)
-    - [clean\_dataset.py](#clean_datasetpy)
+    - [augment\_videos.py](#augment_videospy)
     - [motion\_classifier.py](#motion_classifierpy)
   - [Linked Scripts](#linked-scripts)
     - [`scripts/quickstart_finetune.sh`](#scriptsquickstart_finetunesh)
@@ -84,7 +102,7 @@ python utils/test_inference_unsloth.py \
 
 # Run with base model for comparison
 python utils/test_inference_unsloth.py \
-    --model_path unsloth/gemma-3n-E4B-it \
+    --model_path google/gemma-3n-E2B-it \
     --limit 50
 
 # Run with sample limit (for quick testing)
@@ -208,22 +226,31 @@ python utils/plot_training_stats.py \
 
 ### load_dataset.py
 
-**Purpose:** Download videos from the HuggingFace QVED dataset with automatic rate limit handling.
+**Purpose:** Download videos from the HuggingFace QVED dataset with automatic rate limit handling and parallel download support.
 
-**Configuration (edit in file):**
+**Arguments:**
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `max_per_class` | int | _required_ | Number of videos per exercise class |
+| `--parallel` | flag | False | Enable parallel downloads for faster processing |
 
-```python
-REPO_ID = "EdgeVLM-Labs/QVED-Test-Dataset"
-MAX_PER_CLASS = 5  # Videos per exercise class
-```
-
-**Sample Command:**
+**Sample Commands:**
 
 ```bash
-python utils/load_dataset.py
+# Download 5 videos per class (sequential)
+python utils/load_dataset.py 5
+
+# Download 10 videos per class with parallel downloads
+python utils/load_dataset.py 10 --parallel
+
+# Download 20 videos per class
+python utils/load_dataset.py 20
 ```
 
-**Output:** Downloads videos to `dataset/` folder organized by exercise class.
+**Output:** 
+- Downloads videos to `dataset/` folder organized by exercise class
+- Creates `dataset/manifest.json` mapping video paths to exercise classes
+- Downloads `dataset/fine_grained_labels.json` ground truth file
 
 <!-- ### load_drive_folder.py
 
@@ -296,22 +323,27 @@ python utils/filter_ground_truth.py
 
 **Output:** `dataset/ground_truth.json`
 
-### clean_dataset.py
+### augment_videos.py
 
-**Purpose:** Filter low-quality videos from dataset based on quality metrics.
+**Purpose:** Create augmented versions of videos with various transformations to increase dataset size.
 
-**Quality Criteria:**
-
-- Resolution thresholds
-- Brightness levels
-- Sharpness (blur detection)
-- Motion detection
+**Augmentations Applied:**
+- Horizontal flips
+- Rotations (±10 degrees)
+- Gaussian blur
+- Brightness adjustments
+- Noise addition
+- Color jitter
 
 **Sample Command:**
 
 ```bash
-python utils/clean_dataset.py
+python utils/augment_videos.py
 ```
+
+**Input:** Videos in `dataset/` folder
+
+**Output:** Augmented videos saved alongside originals with `_aug_` suffix
 
 ### motion_classifier.py
 
@@ -368,7 +400,7 @@ bash scripts/run_inference.sh \
 
 # Test with base model
 bash scripts/run_inference.sh \
-    --model_path unsloth/gemma-3n-E4B-it
+    --model_path google/gemma-3n-E2B-it
 
 # Full test set (no limit)
 bash scripts/run_inference.sh \

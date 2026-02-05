@@ -8,7 +8,7 @@ Supports both single video evaluation and batch evaluation.
 Usage:
     # Evaluate base model
     python scripts/eval_gemma3n.py \
-        --model_path unsloth/gemma-3n-E4B-it \
+        --model_path google/gemma-3n-E2B-it \
         --eval_json dataset/qved_val.json \
         --output_file results/eval_base.json
     
