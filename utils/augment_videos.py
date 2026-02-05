@@ -40,21 +40,23 @@ import torch
 # ----------------------------
 # Augmentation Options
 # ----------------------------
+# Note: Some augmentations may fail with certain parameter combinations
+# due to vidaug compatibility issues with newer NumPy versions
 AUGMENTATION_OPTIONS = {
     1: ("Horizontal Flip", va.HorizontalFlip()),
     2: ("Vertical Flip", va.VerticalFlip()),
     3: ("Random Rotate (±10°)", va.RandomRotate(degrees=10)),
-    4: ("Random Resize (±20%)", va.RandomResize(rate=0.2)),
+    # 4: ("Random Resize (±20%)", va.RandomResize(rate=0.2)),  # Disabled - NumPy compatibility issue
     5: ("Gaussian Blur", va.GaussianBlur(sigma=1.5)),
     6: ("Add Brightness (+30)", va.Add(value=30)),
     7: ("Multiply Brightness (1.2x)", va.Multiply(value=1.2)),
-    8: ("Random Translate (±15px)", va.RandomTranslate(x=15, y=15)),
-    9: ("Random Shear", va.RandomShear(x=0.1, y=0.1)),
+    # 8: ("Random Translate (±15px)", va.RandomTranslate(x=15, y=15)),  # Disabled - NumPy compatibility issue
+    # 9: ("Random Shear", va.RandomShear(x=0.1, y=0.1)),  # Disabled - NumPy compatibility issue
     10: ("Invert Color", va.InvertColor()),
     11: ("Salt Noise", va.Salt(ratio=100)),
     12: ("Pepper Noise", va.Pepper(ratio=100)),
-    13: ("Temporal Downsample (0.8x)", va.Downsample(ratio=0.8)),
-    14: ("Elastic Transformation", va.ElasticTransformation(alpha=10, sigma=3)),
+    # 13: ("Temporal Downsample (0.8x)", va.Downsample(ratio=0.8)),  # Disabled - NumPy compatibility issue
+    # 14: ("Elastic Transformation", va.ElasticTransformation(alpha=10, sigma=3)),  # Disabled - NumPy compatibility issue
 }
 
 # ----------------------------
@@ -93,17 +95,26 @@ def get_video_fps(video_path):
     return fps if fps > 0 else 30
 
 def augment_video(video_path, augmentor, output_path):
+    """Apply augmentation to video and save the result."""
     frames = load_video_frames(video_path)
     if not frames:
         print(f"❌ Failed to load frames for {video_path.name}")
         return False
     try:
         augmented_frames = augmentor(frames)
+        # Ensure frames are valid after augmentation
+        if not augmented_frames or len(augmented_frames) == 0:
+            print(f"❌ Augmentation produced no frames")
+            return False
     except Exception as e:
         print(f"❌ Augmentation failed: {e}")
         return False
+    
     fps = get_video_fps(video_path)
-    return save_video_frames(augmented_frames, output_path, fps)
+    success = save_video_frames(augmented_frames, output_path, fps)
+    if not success:
+        print(f"❌ Failed to save augmented video")
+    return success
 
 def update_json_files(augmented_videos_info, base_dir, update_manifest=True):
     """Update JSON files with augmented video info."""
