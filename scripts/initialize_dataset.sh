@@ -147,8 +147,8 @@ echo ""
 
 # Step 6: Generate QVED splits (AFTER cleaning and augmentation)
 echo -e "${RED}Step 6: Generating QVED Train/Val/Test Splits${NC}"
-echo -e "${BLUE}Running: python utils/dataset/qved_from_fine_labels.py${NC}"
-python utils/dataset/qved_from_fine_labels.py
+echo -e "${BLUE}Running: python utils/qved_from_fine_labels.py${NC}"
+python utils/qved_from_fine_labels.py
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}Error: QVED split generation failed${NC}"
