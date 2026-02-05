@@ -48,8 +48,8 @@ echo ""
 
 # Step 2: Download dataset
 echo -e "${RED}Step 2: Downloading Dataset from HuggingFace${NC}"
-echo -e "${BLUE}Running: python utils/dataset/load_dataset.py ${VIDEO_COUNT} ${PARALLEL_FLAG}${NC}"
-python utils/dataset/load_dataset.py "$VIDEO_COUNT" $PARALLEL_FLAG
+echo -e "${BLUE}Running: python utils/load_dataset.py ${VIDEO_COUNT} ${PARALLEL_FLAG}${NC}"
+python utils/load_dataset.py "$VIDEO_COUNT" $PARALLEL_FLAG
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}Error: Dataset download failed${NC}"
@@ -70,8 +70,8 @@ FILTER_RESPONSE=$(echo "$FILTER_RESPONSE" | tr '[:upper:]' '[:lower:]')
 
 if [[ "$FILTER_RESPONSE" == "y" || "$FILTER_RESPONSE" == "yes" ]]; then
     echo ""
-    echo -e "${BLUE}Running: python utils/dataset/filter_ground_truth.py${NC}"
-    python utils/dataset/filter_ground_truth.py
+    echo -e "${BLUE}Running: python utils/filter_ground_truth.py${NC}"
+    python utils/filter_ground_truth.py
 
     if [ $? -ne 0 ]; then
         echo -e "${RED}Error: Ground truth filtering failed${NC}"
@@ -100,8 +100,8 @@ CLEAN_RESPONSE=$(echo "$CLEAN_RESPONSE" | tr '[:upper:]' '[:lower:]')
 
 if [[ "$CLEAN_RESPONSE" == "y" || "$CLEAN_RESPONSE" == "yes" ]]; then
     echo ""
-    echo -e "${BLUE}Running: python utils/dataset/clean_dataset.py${NC}"
-    python utils/dataset/clean_dataset.py
+    echo -e "${BLUE}Running: python utils/clean_dataset.py${NC}"
+    python utils/clean_dataset.py
 
     if [ $? -ne 0 ]; then
         echo -e "${RED}Error: Dataset cleaning failed${NC}"
@@ -130,8 +130,8 @@ AUGMENT_RESPONSE=$(echo "$AUGMENT_RESPONSE" | tr '[:upper:]' '[:lower:]')
 
 if [[ "$AUGMENT_RESPONSE" == "y" || "$AUGMENT_RESPONSE" == "yes" ]]; then
     echo ""
-    echo -e "${BLUE}Running: python utils/dataset/augment_videos.py${NC}"
-    python utils/dataset/augment_videos.py
+    echo -e "${BLUE}Running: python utils/augment_videos.py${NC}"
+    python utils/augment_videos.py
 
     if [ $? -ne 0 ]; then
         echo -e "${RED}Error: Dataset augmentation failed${NC}"

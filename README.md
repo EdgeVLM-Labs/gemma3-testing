@@ -15,7 +15,6 @@ Fine-tune Google's **Gemma-3N (google/gemma-3n-E2B-it)** model on video datasets
 apt-get update && apt-get install -y wget git build-essential
 git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
-git checkout gemma-1
 
 # 2. Run automated setup (installs conda, packages, and prompts for auth)
 bash setup.sh
