@@ -78,6 +78,8 @@ openai==1.54.0
 
 # Augmentation (optional)
 albumentations
+vidaug
+scikit-image
 opencv-python-headless
 
 # Video processing (optional - for VideoMamba support)

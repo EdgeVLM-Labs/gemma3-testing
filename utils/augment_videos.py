@@ -22,6 +22,17 @@ import cv2
 import numpy as np
 from pathlib import Path
 from PIL import Image
+
+# Fix for vidaug compatibility with NumPy >= 1.20
+# vidaug uses deprecated np.float, np.int aliases
+import numpy as np
+if not hasattr(np, 'float'):
+    np.float = np.float64
+if not hasattr(np, 'int'):
+    np.int = np.int_
+if not hasattr(np, 'bool'):
+    np.bool = np.bool_
+
 import vidaug.augmentors as va
 from unsloth import FastModel
 import torch
