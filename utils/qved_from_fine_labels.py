@@ -4,13 +4,13 @@ Prepare QVED dataset for Google GEMMA-3N-E2B / Mobile-VideoGPT inference.
 
 This script:
   1. Loads a manifest mapping video filenames to paths.
-  2. Loads fine-grained labels (ground_truth.json).
+  2. Loads fine-grained labels and feedbacks.
   3. Converts the dataset into Mobile-VideoGPT conversation format.
-  4. Splits data into train, val, and test sets.
+  4. Splits data into train, val, and test sets consistently.
   5. Saves JSON files ready for training or evaluation.
 
 Usage:
-  python prepare_qved_dataset.py
+  python qved_from_fine_labels.py
 """
 
 import json
@@ -19,18 +19,20 @@ import random
 from pathlib import Path
 
 # ----------------- CONFIG ----------------- #
-BASE_DIR = Path("dataset")  # Root dataset folder
-MANIFEST_JSON = BASE_DIR / "manifest.json"          # Mapping of filenames -> full paths
-FINE_LABELS_JSON = BASE_DIR / "ground_truth.json"  # Fine-grained labels
-
+BASE_DIR = Path("dataset")
+FINE_GRAINED_JSON = BASE_DIR / "fine_grained_labels.json"
+FEEDBACKS_JSON = BASE_DIR / "feedbacks_short_clips.json"
+MANIFEST_JSON = BASE_DIR / "manifest.json"
 OUTPUT_TRAIN_JSON = BASE_DIR / "qved_train.json"
 OUTPUT_VAL_JSON = BASE_DIR / "qved_val.json"
 OUTPUT_TEST_JSON = BASE_DIR / "qved_test.json"
-
-# User prompt for GEMMA-3N-E2B
+OUTPUT_FEEDBACKS_TRAIN_JSON = BASE_DIR / "qved_feedbacks_train.json"
+OUTPUT_FEEDBACKS_VAL_JSON = BASE_DIR / "qved_feedbacks_val.json"
+OUTPUT_FEEDBACKS_TEST_JSON = BASE_DIR / "qved_feedbacks_test.json"
 USER_PROMPT_TEMPLATE = "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend?"
+FEEDBACK_PROMPT_TEMPLATE = "Please evaluate the exercise form shown. What feedback would you provide to improve the performance?"
 
-# Dataset split ratios
+# Dataset split ratios (adjustable)
 TRAIN_RATIO = 0.60
 VAL_RATIO = 0.20
 TEST_RATIO = 0.20
@@ -38,21 +40,22 @@ RANDOM_SEED = 42  # For reproducibility
 
 # ------------------------------------------ #
 
-def load_manifest(manifest_path):
-    """Load manifest JSON mapping filenames to paths."""
-    with open(manifest_path, 'r') as f:
+def load_manifest():
+    """Load manifest and create lookup dictionaries"""
+    with open(MANIFEST_JSON, 'r') as f:
         manifest = json.load(f)
 
+    # Create reverse lookup: filename -> full_path
     filename_to_path = {}
     filename_to_exercise = {}
-
     for full_path, exercise in manifest.items():
         filename = os.path.basename(full_path)
         filename_to_path[filename] = full_path
-
+        # Handle both string and dict values in manifest
         if isinstance(exercise, str):
             filename_to_exercise[filename] = exercise.replace('_', ' ')
         elif isinstance(exercise, dict):
+            # For dict entries (augmented videos), extract exercise from path
             exercise_name = full_path.split('/')[0] if '/' in full_path else 'unknown'
             filename_to_exercise[filename] = exercise_name.replace('_', ' ')
         else:
@@ -60,43 +63,47 @@ def load_manifest(manifest_path):
 
     return filename_to_path, filename_to_exercise
 
-def load_fine_labels(labels_path):
-    """Load fine-grained labels JSON."""
-    with open(labels_path, 'r') as f:
-        return json.load(f)
+def process_fine_grained_labels(fine_labels_path, filename_to_path, filename_to_exercise):
+    """Process fine-grained labels JSON file"""
+    if not fine_labels_path.exists():
+        print(f"Warning: {fine_labels_path} not found, skipping fine-grained labels processing")
+        return []
 
-def prepare_output_data(fine_labels, filename_to_path, filename_to_exercise):
-    """Convert raw labels into Mobile-VideoGPT conversation format."""
+    with open(fine_labels_path, 'r') as f:
+        fine_labels = json.load(f)
+
+    # Convert to Mobile-VideoGPT format
     output_data = []
 
     for record in fine_labels:
         video_path = record.get('video_path', '')
+        # Extract filename from path (handles ./ prefix)
         filename = os.path.basename(video_path)
 
+        # Look up full path in manifest
         if filename not in filename_to_path:
-            print(f"⚠️ Warning: {filename} not found in manifest, skipping")
+            print(f"Warning: {filename} not found in manifest, skipping")
             continue
 
         full_video_path = filename_to_path[filename]
         exercise = filename_to_exercise[filename]
 
-        # Make path relative to dataset root
+        # Remove 'dataset/' prefix if present to make path relative to data_path
+        # data_path is 'dataset', so videos should be 'exercise_name/video.mp4'
         if full_video_path.startswith('dataset/'):
             relative_video_path = full_video_path[len('dataset/'):]
         else:
             relative_video_path = full_video_path
 
-        # Determine assistant answer
+        # Get assistant answer from most descriptive label
         if 'labels_descriptive' in record and record['labels_descriptive']:
             assistant_answer = record['labels_descriptive']
         elif 'labels' in record and record['labels']:
-            if isinstance(record['labels'], list):
-                assistant_answer = record['labels'][0]
-            else:
-                assistant_answer = record['labels']
+            assistant_answer = record['labels'][0] if isinstance(record['labels'], list) else record['labels']
         else:
             assistant_answer = "No feedback available."
 
+        # Ensure assistant answer is a single string
         if isinstance(assistant_answer, list):
             assistant_answer = '\n'.join(str(item) for item in assistant_answer)
         else:
@@ -110,65 +117,302 @@ def prepare_output_data(fine_labels, filename_to_path, filename_to_exercise):
                 {"from": "human", "value": user_prompt},
                 {"from": "gpt", "value": assistant_answer}
             ],
-            "split": "train"  # Temporary, will be updated during split
+            "split": "train",  # Will be updated during split
+            "filename": filename  # Keep filename for cross-reference
         })
 
     return output_data
 
-def split_dataset(output_data):
-    """Shuffle and split dataset into train, val, test."""
-    random.seed(RANDOM_SEED)
-    random.shuffle(output_data)
+def process_feedbacks(feedbacks_path, filename_to_path, filename_to_exercise):
+    """Process feedbacks JSON file"""
+    if not feedbacks_path.exists():
+        print(f"Warning: {feedbacks_path} not found, skipping feedbacks processing")
+        return []
 
-    total_count = len(output_data)
+    with open(feedbacks_path, 'r') as f:
+        feedbacks = json.load(f)
+
+    # Convert to Mobile-VideoGPT format
+    output_data = []
+
+    for record in feedbacks:
+        video_path = record.get('video_path', '')
+        # Extract filename from path (handles ./ prefix)
+        filename = os.path.basename(video_path)
+
+        # Look up full path in manifest
+        if filename not in filename_to_path:
+            print(f"Warning: {filename} not found in manifest, skipping")
+            continue
+
+        full_video_path = filename_to_path[filename]
+        exercise = filename_to_exercise[filename]
+
+        # Remove 'dataset/' prefix if present to make path relative to data_path
+        if full_video_path.startswith('dataset/'):
+            relative_video_path = full_video_path[len('dataset/'):]
+        else:
+            relative_video_path = full_video_path
+
+        # Get feedbacks and join them
+        feedbacks_list = record.get('feedbacks', [])
+        if isinstance(feedbacks_list, list):
+            assistant_answer = '\n'.join(str(item) for item in feedbacks_list)
+        else:
+            assistant_answer = str(feedbacks_list)
+
+        if not assistant_answer.strip():
+            assistant_answer = "No feedback available."
+
+        user_prompt = FEEDBACK_PROMPT_TEMPLATE
+
+        output_data.append({
+            "video": relative_video_path,
+            "conversations": [
+                {"from": "human", "value": user_prompt},
+                {"from": "gpt", "value": assistant_answer}
+            ],
+            "split": "train",  # Will be updated during split
+            "filename": filename  # Keep filename for cross-reference
+        })
+
+    return output_data
+
+def split_data_consistently(data1, data2):
+    """
+    Split two datasets consistently - same videos go to same splits in same order.
+    Returns (train1, val1, test1, train2, val2, test2)
+    """
+    # Create filename to index mappings
+    filename_to_idx1 = {item['filename']: idx for idx, item in enumerate(data1)}
+    filename_to_idx2 = {item['filename']: idx for idx, item in enumerate(data2)}
+
+    # Find common filenames
+    common_filenames = set(filename_to_idx1.keys()) & set(filename_to_idx2.keys())
+
+    if not common_filenames:
+        print("Warning: No common videos found between the two datasets")
+        return [], [], [], [], [], []
+
+    # Create paired list with common videos
+    common_list = list(common_filenames)
+
+    # Shuffle for random split
+    random.seed(RANDOM_SEED)
+    random.shuffle(common_list)
+
+    # Calculate split indices
+    total_count = len(common_list)
     train_end = int(total_count * TRAIN_RATIO)
     val_end = train_end + int(total_count * VAL_RATIO)
 
-    train_data = output_data[:train_end]
-    val_data = output_data[train_end:val_end]
-    test_data = output_data[val_end:]
+    # Split filenames
+    train_filenames = common_list[:train_end]
+    val_filenames = common_list[train_end:val_end]
+    test_filenames = common_list[val_end:]
 
-    for item in train_data:
-        item["split"] = "train"
-    for item in val_data:
-        item["split"] = "val"
-    for item in test_data:
-        item["split"] = "test"
+    # Create split datasets maintaining order
+    def create_split(filenames, dataset, filename_to_idx, split_name):
+        split_data = []
+        for filename in filenames:
+            idx = filename_to_idx[filename]
+            item = dataset[idx].copy()
+            item['split'] = split_name
+            # Remove filename from output (it was only for cross-reference)
+            item.pop('filename', None)
+            split_data.append(item)
+        return split_data
 
-    return train_data, val_data, test_data
+    train_data1 = create_split(train_filenames, data1, filename_to_idx1, "train")
+    val_data1 = create_split(val_filenames, data1, filename_to_idx1, "val")
+    test_data1 = create_split(test_filenames, data1, filename_to_idx1, "test")
 
-def save_json(data, output_path):
-    """Save data to JSON file."""
-    BASE_DIR.mkdir(parents=True, exist_ok=True)
-    with open(output_path, 'w') as f:
-        json.dump(data, f, indent=2)
+    train_data2 = create_split(train_filenames, data2, filename_to_idx2, "train")
+    val_data2 = create_split(val_filenames, data2, filename_to_idx2, "val")
+    test_data2 = create_split(test_filenames, data2, filename_to_idx2, "test")
+
+    return train_data1, val_data1, test_data1, train_data2, val_data2, test_data2
 
 def main():
     print("📂 Loading manifest...")
-    filename_to_path, filename_to_exercise = load_manifest(MANIFEST_JSON)
+    filename_to_path, filename_to_exercise = load_manifest()
 
-    print("📝 Loading fine-grained labels...")
-    fine_labels = load_fine_labels(FINE_LABELS_JSON)
+    # Process both datasets
+    fine_data = []
+    feedbacks_data = []
 
-    print("⚙️ Preparing output dataset...")
-    output_data = prepare_output_data(fine_labels, filename_to_path, filename_to_exercise)
+    if FINE_GRAINED_JSON.exists():
+        fine_data = process_fine_grained_labels(FINE_GRAINED_JSON, filename_to_path, filename_to_exercise)
+        print(f"✓ Using fine-grained labels from: {FINE_GRAINED_JSON}")
 
-    print("🔀 Splitting dataset...")
-    train_data, val_data, test_data = split_dataset(output_data)
+    if FEEDBACKS_JSON.exists():
+        feedbacks_data = process_feedbacks(FEEDBACKS_JSON, filename_to_path, filename_to_exercise)
+        print(f"✓ Using feedbacks from: {FEEDBACKS_JSON}")
 
-    save_json(train_data, OUTPUT_TRAIN_JSON)
-    save_json(val_data, OUTPUT_VAL_JSON)
-    save_json(test_data, OUTPUT_TEST_JSON)
+    # Check if we have data to process
+    if not fine_data and not feedbacks_data:
+        print("❌ Error: No input data files found. Need at least one of:")
+        print(f"  - {FINE_GRAINED_JSON}")
+        print(f"  - {FEEDBACKS_JSON}")
+        return
 
-    print(f"\n{'='*60}")
-    print("✅ Dataset Split Summary")
-    print(f"Total videos: {len(output_data)}")
-    print(f"Exercise classes: {len(set(filename_to_exercise.values()))}")
-    print(f"Train: {len(train_data)} samples ({len(train_data)/len(output_data)*100:.1f}%)")
-    print(f"Val:   {len(val_data)} samples ({len(val_data)/len(output_data)*100:.1f}%)")
-    print(f"Test:  {len(test_data)} samples ({len(test_data)/len(output_data)*100:.1f}%)")
-    print(f"Output files saved in {BASE_DIR}")
-    print(f"{'='*60}")
+    # If we have both datasets, split them consistently
+    if fine_data and feedbacks_data:
+        print("🔀 Splitting datasets consistently...")
+        train_fine, val_fine, test_fine, train_fb, val_fb, test_fb = split_data_consistently(fine_data, feedbacks_data)
+
+        # Write fine-grained labels splits
+        BASE_DIR.mkdir(parents=True, exist_ok=True)
+        with open(OUTPUT_TRAIN_JSON, 'w') as f:
+            json.dump(train_fine, f, indent=2)
+        with open(OUTPUT_VAL_JSON, 'w') as f:
+            json.dump(val_fine, f, indent=2)
+        with open(OUTPUT_TEST_JSON, 'w') as f:
+            json.dump(test_fine, f, indent=2)
+
+        # Write feedbacks splits
+        with open(OUTPUT_FEEDBACKS_TRAIN_JSON, 'w') as f:
+            json.dump(train_fb, f, indent=2)
+        with open(OUTPUT_FEEDBACKS_VAL_JSON, 'w') as f:
+            json.dump(val_fb, f, indent=2)
+        with open(OUTPUT_FEEDBACKS_TEST_JSON, 'w') as f:
+            json.dump(test_fb, f, indent=2)
+
+        print(f"\n{'='*60}")
+        print(f"✅ Dataset Split Summary (Both Datasets)")
+        print(f"{'='*60}")
+        print(f"Total common videos: {len(train_fine) + len(val_fine) + len(test_fine)}")
+        print(f"Exercise classes: {len(set(filename_to_exercise.values()))}")
+        print(f"\nFine-Grained Labels Split:")
+        print(f"  Train: {len(train_fine)} samples ({len(train_fine)/(len(train_fine)+len(val_fine)+len(test_fine))*100:.1f}%)")
+        print(f"  Val:   {len(val_fine)} samples ({len(val_fine)/(len(train_fine)+len(val_fine)+len(test_fine))*100:.1f}%)")
+        print(f"  Test:  {len(test_fine)} samples ({len(test_fine)/(len(train_fine)+len(val_fine)+len(test_fine))*100:.1f}%)")
+        print(f"\nFeedbacks Split:")
+        print(f"  Train: {len(train_fb)} samples ({len(train_fb)/(len(train_fb)+len(val_fb)+len(test_fb))*100:.1f}%)")
+        print(f"  Val:   {len(val_fb)} samples ({len(val_fb)/(len(train_fb)+len(val_fb)+len(test_fb))*100:.1f}%)")
+        print(f"  Test:  {len(test_fb)} samples ({len(test_fb)/(len(train_fb)+len(val_fb)+len(test_fb))*100:.1f}%)")
+        print(f"\nFine-Grained Labels Output files:")
+        print(f"  Train: {OUTPUT_TRAIN_JSON}")
+        print(f"  Val:   {OUTPUT_VAL_JSON}")
+        print(f"  Test:  {OUTPUT_TEST_JSON}")
+        print(f"\nFeedbacks Output files:")
+        print(f"  Train: {OUTPUT_FEEDBACKS_TRAIN_JSON}")
+        print(f"  Val:   {OUTPUT_FEEDBACKS_VAL_JSON}")
+        print(f"  Test:  {OUTPUT_FEEDBACKS_TEST_JSON}")
+        print(f"{'='*60}")
+
+    # If we only have one dataset, use the original splitting logic
+    elif fine_data:
+        print("🔀 Splitting fine-grained labels dataset...")
+        
+        # Remove filename field before processing
+        for item in fine_data:
+            item.pop('filename', None)
+
+        # Shuffle data for random split
+        random.seed(RANDOM_SEED)
+        random.shuffle(fine_data)
+
+        # Calculate split indices
+        total_count = len(fine_data)
+        train_end = int(total_count * TRAIN_RATIO)
+        val_end = train_end + int(total_count * VAL_RATIO)
+
+        # Split the data
+        train_data = fine_data[:train_end]
+        val_data = fine_data[train_end:val_end]
+        test_data = fine_data[val_end:]
+
+        # Update split labels
+        for item in train_data:
+            item["split"] = "train"
+        for item in val_data:
+            item["split"] = "val"
+        for item in test_data:
+            item["split"] = "test"
+
+        # Write output JSONs
+        BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+        with open(OUTPUT_TRAIN_JSON, 'w') as f:
+            json.dump(train_data, f, indent=2)
+
+        with open(OUTPUT_VAL_JSON, 'w') as f:
+            json.dump(val_data, f, indent=2)
+
+        with open(OUTPUT_TEST_JSON, 'w') as f:
+            json.dump(test_data, f, indent=2)
+
+        print(f"\n{'='*60}")
+        print(f"✅ Dataset Split Summary (Fine-Grained Labels Only)")
+        print(f"{'='*60}")
+        print(f"Total videos: {total_count}")
+        print(f"Exercise classes: {len(set(filename_to_exercise.values()))}")
+        print(f"\nSplit Distribution:")
+        print(f"  Train: {len(train_data)} samples ({len(train_data)/total_count*100:.1f}%)")
+        print(f"  Val:   {len(val_data)} samples ({len(val_data)/total_count*100:.1f}%)")
+        print(f"  Test:  {len(test_data)} samples ({len(test_data)/total_count*100:.1f}%)")
+        print(f"\nOutput files:")
+        print(f"  Train: {OUTPUT_TRAIN_JSON}")
+        print(f"  Val:   {OUTPUT_VAL_JSON}")
+        print(f"  Test:  {OUTPUT_TEST_JSON}")
+        print(f"{'='*60}")
+
+    elif feedbacks_data:
+        print("🔀 Splitting feedbacks dataset...")
+        
+        # Remove filename field before processing
+        for item in feedbacks_data:
+            item.pop('filename', None)
+
+        # Shuffle data for random split
+        random.seed(RANDOM_SEED)
+        random.shuffle(feedbacks_data)
+
+        # Calculate split indices
+        total_count = len(feedbacks_data)
+        train_end = int(total_count * TRAIN_RATIO)
+        val_end = train_end + int(total_count * VAL_RATIO)
+
+        # Split the data
+        train_data = feedbacks_data[:train_end]
+        val_data = feedbacks_data[train_end:val_end]
+        test_data = feedbacks_data[val_end:]
+
+        # Update split labels
+        for item in train_data:
+            item["split"] = "train"
+        for item in val_data:
+            item["split"] = "val"
+        for item in test_data:
+            item["split"] = "test"
+
+        # Write output JSONs
+        BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+        with open(OUTPUT_FEEDBACKS_TRAIN_JSON, 'w') as f:
+            json.dump(train_data, f, indent=2)
+
+        with open(OUTPUT_FEEDBACKS_VAL_JSON, 'w') as f:
+            json.dump(val_data, f, indent=2)
+
+        with open(OUTPUT_FEEDBACKS_TEST_JSON, 'w') as f:
+            json.dump(test_data, f, indent=2)
+
+        print(f"\n{'='*60}")
+        print(f"✅ Dataset Split Summary (Feedbacks Only)")
+        print(f"{'='*60}")
+        print(f"Total videos: {total_count}")
+        print(f"Exercise classes: {len(set(filename_to_exercise.values()))}")
+        print(f"\nSplit Distribution:")
+        print(f"  Train: {len(train_data)} samples ({len(train_data)/total_count*100:.1f}%)")
+        print(f"  Val:   {len(val_data)} samples ({len(val_data)/total_count*100:.1f}%)")
+        print(f"  Test:  {len(test_data)} samples ({len(test_data)/total_count*100:.1f}%)")
+        print(f"\nOutput files:")
+        print(f"  Train: {OUTPUT_FEEDBACKS_TRAIN_JSON}")
+        print(f"  Val:   {OUTPUT_FEEDBACKS_VAL_JSON}")
+        print(f"  Test:  {OUTPUT_FEEDBACKS_TEST_JSON}")
+        print(f"{'='*60}")
 
 if __name__ == "__main__":
     main()
