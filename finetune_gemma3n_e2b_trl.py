@@ -367,8 +367,8 @@ def main():
                         help="Output directory for checkpoints and model")
     
     # Training hyperparameters
-    parser.add_argument("--num_frames", type=int, default=8,
-                        help="Number of frames to extract from videos (default: 8)")
+    parser.add_argument("--num_frames", type=int, default=16,
+                        help="Number of frames to extract from videos (default: 16)")
     parser.add_argument("--num_train_epochs", type=int, default=3,
                         help="Number of training epochs (default: 3)")
     parser.add_argument("--learning_rate", type=float, default=2e-4,
@@ -404,7 +404,7 @@ def main():
                         help="Enable gradient checkpointing (default: True)")
     
     # Wandb configuration
-    parser.add_argument("--wandb_project", type=str, default="gemma3n-qved-finetuning",
+    parser.add_argument("--wandb_project", type=str, default="gemma3n-coach-finetuning",
                         help="Wandb project name")
     parser.add_argument("--wandb_entity", type=str, default="fyp-21",
                         help="Wandb entity/team name (default: fyp-21)")
@@ -444,7 +444,7 @@ def main():
             print("⚠️  Wandb not available. Install with: pip install wandb")
     
     print("=" * 70)
-    print("Gemma-3n-E2B-it Fine-tuning on QVED Dataset")
+    print("Gemma-3n-E2B-it Fine-tuning on Coach Dataset")
     print("=" * 70)
     print(f"Model:                     {args.model_path}")
     print(f"Training data:             {args.train_json}")
@@ -502,7 +502,7 @@ def main():
     
     # Load datasets
     print("\n📂 Loading and processing datasets...")
-    train_dataset = load_qved_dataset(args.train_json, args.data_path, args.num_frames)
+    train_dataset = load_coach_dataset(args.train_json, args.data_path, args.num_frames)
     
     val_dataset = None
     if args.val_json and args.eval_strategy != "no":
@@ -548,7 +548,7 @@ def main():
     # save_steps must be a multiple of eval_steps when load_best_model_at_end is True
     save_steps = args.save_steps
     if args.eval_strategy == "steps" and val_dataset:
-        eval_steps = steps_info['eval_steps']
+        eval_steps = 30  # Using hardcoded eval_steps value
         # Make save_steps a multiple of eval_steps
         if save_steps % eval_steps != 0:
             save_steps = eval_steps
@@ -557,7 +557,7 @@ def main():
     training_args = SFTConfig(
         output_dir=args.output_dir,
         eval_strategy=args.eval_strategy,
-        eval_steps=steps_info['eval_steps'] if args.eval_strategy == "steps" else None,
+        eval_steps=30 if args.eval_strategy == "steps" else None,
         per_device_train_batch_size=args.per_device_train_batch_size,
         per_device_eval_batch_size=args.per_device_eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -566,7 +566,7 @@ def main():
         learning_rate=args.learning_rate,
         num_train_epochs=args.num_train_epochs,
         warmup_ratio=args.warmup_ratio,
-        logging_steps=steps_info['logging_steps'],
+        logging_steps=1,
         save_steps=save_steps,
         save_strategy="steps",
         bf16=torch.cuda.is_bf16_supported(),

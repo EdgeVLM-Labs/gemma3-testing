@@ -49,15 +49,15 @@ echo -e "${BLUE}================================================================
 MODEL_PATH="${MODEL_PATH:-google/gemma-3n-E2B-it}"
 
 # Dataset paths
-TRAIN_JSON="${TRAIN_JSON:-data/qved_train.json}"
-VAL_JSON="${VAL_JSON:-data/qved_val.json}"
+TRAIN_JSON="${TRAIN_JSON:-data/qved_feedback_train.json}"
+VAL_JSON="${VAL_JSON:-data/qved_feedback_val.json}"
 VIDEO_PATH="${VIDEO_PATH:-videos}"
 
 # Output directory
-OUTPUT_DIR="${OUTPUT_DIR:-./outputs/gemma3n-e2b-qved-ft-$(date +%Y%m%d_%H%M%S)}"
+OUTPUT_DIR="${OUTPUT_DIR:-./outputs/gemma3n-e2b-coach-ft-$(date +%Y%m%d_%H%M%S)}"
 
 # Training hyperparameters
-NUM_FRAMES="${NUM_FRAMES:-8}"            # Extract 8 frames per video
+NUM_FRAMES="${NUM_FRAMES:-16}"            # Extract 16 frames per video
 EPOCHS="${EPOCHS:-3}"                     # 3 epochs
 LEARNING_RATE="${LEARNING_RATE:-2e-4}"   # 2e-4 LR
 BATCH_SIZE="${BATCH_SIZE:-4}"            # Batch size 4 (balanced for 80GB GPU)
