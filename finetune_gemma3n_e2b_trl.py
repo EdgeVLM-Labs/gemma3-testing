@@ -484,7 +484,7 @@ def main():
             torch_dtype=dtype,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
-            max_memory={0: "75GiB", "cpu": "100GiB"}  # Reserve 5GB GPU memory headroom
+            max_memory={0: "45GiB", "cpu": "120GiB"}  # Leave ~35GB for activations/gradients on 80GB GPU
         )
         
         processor = AutoProcessor.from_pretrained(
