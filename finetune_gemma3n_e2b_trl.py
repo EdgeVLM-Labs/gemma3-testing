@@ -502,7 +502,7 @@ def main():
     
     # Load datasets
     print("\n📂 Loading and processing datasets...")
-    train_dataset = load_coach_dataset(args.train_json, args.data_path, args.num_frames)
+    train_dataset = load_qved_dataset(args.train_json, args.data_path, args.num_frames)
     
     val_dataset = None
     if args.val_json and args.eval_strategy != "no":
