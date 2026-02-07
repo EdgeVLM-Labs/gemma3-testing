@@ -67,6 +67,9 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+# Set memory allocation config to reduce fragmentation
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
 import cv2
 import torch
 from datasets import Dataset
