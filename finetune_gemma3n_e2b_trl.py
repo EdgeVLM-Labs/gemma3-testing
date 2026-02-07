@@ -367,8 +367,8 @@ def main():
                         help="Output directory for checkpoints and model")
     
     # Training hyperparameters
-    parser.add_argument("--num_frames", type=int, default=16,
-                        help="Number of frames to extract from videos (default: 16)")
+    parser.add_argument("--num_frames", type=int, default=8,
+                        help="Number of frames to extract from videos (default: 8, use 4-8 for 48GB GPU)")
     parser.add_argument("--num_train_epochs", type=int, default=3,
                         help="Number of training epochs (default: 3)")
     parser.add_argument("--learning_rate", type=float, default=2e-4,
