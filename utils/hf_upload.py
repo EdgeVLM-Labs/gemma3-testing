@@ -5,6 +5,11 @@ HuggingFace Model Upload Utility
 Uploads finetuned Gemma-3N-E4B models to HuggingFace Hub.
 
 Usage:
+    python utils/hf_upload.py \
+    --model_path ./outputs/gemma3n-e2b-qved-ft \
+    --org EdgeVLM-Labs \
+    --repo_name gemma3n-e2b-qved-coach
+    
     python utils/hf_upload.py --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit
     python utils/hf_upload.py --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit --repo_name my-gemma3n-finetune
     python utils/hf_upload.py --model_path outputs/gemma3n_finetune_20260108_162806 --private

@@ -4,6 +4,16 @@ Gemma-3n-E2B-it Fine-tuning Script for QVED Dataset
 Uses TRL SFTTrainer with video frame extraction for physiotherapy exercise analysis
 
 USAGE:
+    python finetune_gemma3n_e2b_trl.py \
+    --model_path your-model-name-or-path \
+    --train_json dataset/qved_train.json \
+    --val_json dataset/qved_val.json \
+    --data_path dataset/ \
+    --output_dir ./outputs/gemma3n-qved-coach \
+    --upload_to_hf \
+    --hf_org EdgeVLM-Labs \
+    --hf_private
+
     Basic training with default hyperparameters:
         python finetune_gemma3n_e2b_trl.py \
             --train_json dataset/qved_train.json \
@@ -85,6 +95,14 @@ try:
 except ImportError:
     WANDB_AVAILABLE = False
     print("⚠️  wandb not installed. Run: pip install wandb")
+
+# Optional huggingface_hub import for model upload
+try:
+    from huggingface_hub import HfApi, create_repo, upload_folder, login
+    HF_HUB_AVAILABLE = True
+except ImportError:
+    HF_HUB_AVAILABLE = False
+    print("⚠️  huggingface_hub not installed. Run: pip install huggingface_hub")
 
 
 def resize_image(img: Image.Image, target_width: int = 224, target_height: int = 224) -> Image.Image:
@@ -422,6 +440,14 @@ def main():
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed (default: 42)")
     
+    # HuggingFace upload arguments
+    parser.add_argument("--upload_to_hf", action="store_true",
+                        help="Upload model to HuggingFace after training")
+    parser.add_argument("--hf_org", type=str, default="EdgeVLM-Labs",
+                        help="HuggingFace organization name (default: EdgeVLM-Labs)")
+    parser.add_argument("--hf_private", action="store_true",
+                        help="Make HuggingFace repository private")
+    
     args = parser.parse_args()
     
     # Validate CUDA availability
@@ -630,6 +656,80 @@ def main():
         with open(os.path.join(args.output_dir, "training_args.json"), "w") as f:
             json.dump(vars(args), f, indent=2)
         print("✓ Training arguments saved")
+        
+        # Upload to HuggingFace if requested
+        if args.upload_to_hf:
+            if not HF_HUB_AVAILABLE:
+                print("\n⚠️  Cannot upload: huggingface_hub not installed")
+                print("    Install with: pip install huggingface_hub")
+            else:
+                print("\n" + "=" * 70)
+                print("📤 Uploading model to HuggingFace...")
+                print("=" * 70)
+                
+                try:
+                    # Extract repo name from output_dir
+                    repo_name = Path(args.output_dir).name
+                    repo_id = f"{args.hf_org}/{repo_name}"
+                    
+                    # Check if logged in
+                    api = HfApi()
+                    try:
+                        user_info = api.whoami()
+                        print(f"✓ Logged in as: {user_info['name']}")
+                    except Exception:
+                        hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+                        if hf_token:
+                            print("  Using HF_TOKEN from environment...")
+                            login(token=hf_token)
+                        else:
+                            print("\n⚠️  Not logged in to HuggingFace")
+                            print("    Please run: huggingface-cli login")
+                            print("    Or set HF_TOKEN environment variable")
+                            raise Exception("HuggingFace authentication required")
+                    
+                    print(f"\n📦 Creating repository: {repo_id}")
+                    print(f"   Private: {args.hf_private}")
+                    
+                    # Create repository
+                    create_repo(
+                        repo_id=repo_id,
+                        repo_type="model",
+                        private=args.hf_private,
+                        exist_ok=True
+                    )
+                    print("✓ Repository created/verified")
+                    
+                    # Upload model folder
+                    print(f"\n🚀 Uploading files from: {args.output_dir}")
+                    upload_folder(
+                        folder_path=args.output_dir,
+                        repo_id=repo_id,
+                        repo_type="model",
+                        commit_message=f"Upload finetuned Gemma-3n-E2B model (epochs={args.num_train_epochs}, lr={args.learning_rate})",
+                        ignore_patterns=["*.py", "__pycache__", "*.pyc", "runs/*", "wandb/*", "checkpoint-*"],
+                    )
+                    
+                    repo_url = f"https://huggingface.co/{repo_id}"
+                    print("\n" + "=" * 70)
+                    print("✅ Upload Complete!")
+                    print("=" * 70)
+                    print(f"🔗 Model URL: {repo_url}")
+                    print(f"\nTo use this model:")
+                    print(f"  from transformers import AutoProcessor, Gemma3nForConditionalGeneration")
+                    print(f"  from peft import PeftModel")
+                    print(f"")
+                    print(f"  base_model = Gemma3nForConditionalGeneration.from_pretrained('google/gemma-3n-E2B-it')")
+                    print(f"  model = PeftModel.from_pretrained(base_model, '{repo_id}')")
+                    print(f"  processor = AutoProcessor.from_pretrained('{repo_id}')")
+                    print("=" * 70)
+                    
+                except Exception as e:
+                    print(f"\n❌ Upload failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    print(f"\n💡 You can manually upload later using:")
+                    print(f"   python utils/hf_upload.py --model_path {args.output_dir} --org {args.hf_org}")
         
     except KeyboardInterrupt:
         print("\n⚠️  Training interrupted by user")
