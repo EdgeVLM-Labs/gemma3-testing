@@ -47,15 +47,12 @@ echo "✅ Unsloth installed"
 echo ""
 
 # ----------------------------
-# 5. Mamba-SSM (VideoMamba encoder)
-# IMPORTANT: Must be installed AFTER PyTorch (step 1)
-# --no-build-isolation ensures torch is visible during build
+# 5. Mamba-SSM (VideoMamba encoder) - SKIPPED
+# IMPORTANT: Only needed for VideoMamba vision encoder (not standard Gemma-3N)
+# Standard Gemma-3N uses CLIP encoder and does not require mamba-ssm
+# To install manually if needed: pip install mamba-ssm --no-cache-dir --no-build-isolation
 # ----------------------------
-echo "🐍 [5/7] Installing Mamba-SSM..."
-pip uninstall -y mamba-ssm
-pip cache purge
-pip install mamba-ssm --no-cache-dir --no-build-isolation
-echo "✅ Mamba-SSM installed"
+echo "⏭️  [5/7] Skipping Mamba-SSM (not needed for standard Gemma-3N)"
 echo ""
 
 # ----------------------------
@@ -91,8 +88,8 @@ python -c "import torch; print(f'✅ PyTorch {torch.__version__} (CUDA: {torch.v
 # Check CUDA availability
 python -c "import torch; print(f'✅ CUDA available: {torch.cuda.is_available()}')" 2>/dev/null || echo "❌ CUDA check failed"
 
-# Check Mamba-SSM
-python -c "import mamba_ssm; print('✅ Mamba-SSM imported successfully')" 2>/dev/null || echo "❌ Mamba-SSM import failed"
+# Check Mamba-SSM (optional - skipped by default)
+python -c "import mamba_ssm; print('✅ Mamba-SSM imported successfully')" 2>/dev/null || echo "⏭️  Mamba-SSM not installed (optional - not needed for standard Gemma-3N)"
 
 # Check Unsloth
 python -c "from unsloth import FastModel; print('✅ Unsloth imported successfully')" 2>/dev/null || echo "❌ Unsloth import failed"

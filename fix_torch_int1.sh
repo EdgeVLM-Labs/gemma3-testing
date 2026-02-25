@@ -26,13 +26,14 @@ pip install --force-reinstall --no-cache-dir --pre torchao --index-url https://d
 echo "🦥 Reinstalling Unsloth..."
 pip install --force-reinstall --no-cache-dir unsloth unsloth_zoo
 
-# Reinstall mamba-ssm (needs to be recompiled against new PyTorch)
-# IMPORTANT: mamba-ssm requires torch to be installed first
-# Using --no-build-isolation ensures torch is visible during build
-echo "🐍 Rebuilding Mamba-SSM for new PyTorch version..."
-pip uninstall -y mamba-ssm
-pip cache purge
-pip install mamba-ssm --no-cache-dir --no-build-isolation
+# Reinstall mamba-ssm (optional - only if using VideoMamba encoder)
+# IMPORTANT: Standard Gemma-3N does not require mamba-ssm
+# Uncomment the lines below only if you need VideoMamba support
+# echo "🐍 Rebuilding Mamba-SSM for new PyTorch version..."
+# pip uninstall -y mamba-ssm
+# pip cache purge
+# pip install mamba-ssm --no-cache-dir --no-build-isolation
+echo "⏭️  Skipping Mamba-SSM (not needed for standard Gemma-3N)"
 
 # Verify installation
 echo ""
@@ -41,7 +42,7 @@ python -c "import torch; print(f'✅ PyTorch {torch.__version__}')" 2>/dev/null 
 python -c "import torchvision; print(f'✅ TorchVision {torchvision.__version__}')" 2>/dev/null || echo "❌ TorchVision import failed"
 python -c "import torch; print(f'✅ torch.int1 available: {hasattr(torch, \"int1\")}')" 2>/dev/null || echo "❌ torch.int1 check failed"
 python -c "import torchao; print(f'✅ TorchAO imported successfully')" 2>/dev/null || echo "❌ TorchAO import failed"
-python -c "import mamba_ssm; print('✅ Mamba-SSM imported successfully')" 2>/dev/null || echo "❌ Mamba-SSM import failed"
+python -c "import mamba_ssm; print('✅ Mamba-SSM imported successfully')" 2>/dev/null || echo "⏭️  Mamba-SSM not installed (optional)"
 python -c "from unsloth import FastModel; print('✅ Unsloth import successful')" 2>/dev/null || echo "❌ Unsloth import failed (this may take a moment)"
 
 echo ""
