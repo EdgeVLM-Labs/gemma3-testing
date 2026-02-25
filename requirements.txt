@@ -1,7 +1,9 @@
 # Core dependencies for Gemma-3N fine-tuning with Unsloth
-# NOTE: PyTorch MUST be installed first (required by mamba-ssm build process)
-# If you get "ModuleNotFoundError: No module named 'torch'" when installing
-# mamba-ssm, run: bash fix_torch_int1.sh or bash finetune_env.sh
+# Cleaned up to remove unused dependencies
+
+# ============================================================================
+# CORE MACHINE LEARNING DEPENDENCIES
+# ============================================================================
 
 # PyTorch and related (INSTALL FIRST - specific versions for compatibility)
 torch==2.5.1
@@ -14,7 +16,6 @@ xformers==0.0.28.post3  # Compatible with torch 2.5.1
 
 # Transformers and tokenizers
 # NOTE: transformers>=4.49.0 required for Gemma-3 vision support
-# For Google's official Gemma-3 models, use: pip install git+https://github.com/huggingface/transformers@v4.49.0-Gemma-3
 transformers==4.56.2
 tokenizers
 sentencepiece
@@ -25,9 +26,11 @@ unsloth
 unsloth_zoo
 peft
 trl==0.22.2
-typing_extensions
 
-# Vision processing
+# ============================================================================
+# VISION & VIDEO PROCESSING
+# ============================================================================
+
 timm
 opencv-python
 opencv-contrib-python
@@ -37,61 +40,63 @@ decord
 einops
 einops-exts
 
-# Dataset and HuggingFace
+# ============================================================================
+# DATASET & HUGGING FACE
+# ============================================================================
+
 datasets>=4.3.0
 huggingface_hub>=0.34.0,<1.0  # Must be <1.0 for transformers 4.56.2 compatibility
 hf_transfer
 
-# Training utilities
+# ============================================================================
+# TRAINING & LOGGING
+# ============================================================================
+
 wandb
 
-# DeepSpeed (optional - for distributed training)
-# deepspeed  # Uncomment if needed: pip install deepspeed
+# ============================================================================
+# UTILITIES
+# ============================================================================
 
-# Additional utilities
 numpy<2.0
 tqdm
-shortuuid
-pydantic
-markdown2[all]
-mmengine
-scikit-learn
-sacrebleu
-evaluate
-nltk
-rouge-score
-sqlitedict
-pytablewriter
-openpyxl
-sentence-transformers
-
-# API and serving (optional)
-gradio
-gradio_client
-requests
-httpx
-uvicorn
-fastapi
-loguru
-tenacity
-openai==1.54.0
-
-# Augmentation (optional)
-albumentations
-vidaug
-scikit-image
-opencv-python-headless
-
-# Video processing (optional - for VideoMamba support)
-# IMPORTANT: mamba-ssm requires torch to be installed BEFORE building
-# Installation often fails due to build issues - skipped by default in setup.sh
-# If installation fails with "ModuleNotFoundError: No module named 'torch'":
-#   - Skipped by default due to frequent build failures
-#   - Only needed for VideoMamba models (not required for basic Gemma-3N)
-#   - To install manually: pip install mamba-ssm==1.2.0 --no-cache-dir --no-build-isolation
-# mamba-ssm==1.2.0  # Commented out - install manually if needed
-
-# Typing extensions (for compatibility)
 typing_extensions
+scikit-learn
+
+# ============================================================================
+# EVALUATION METRICS (for eval scripts)
+# ============================================================================
 
 evaluate>=0.3.0
+nltk
+rouge-score
+
+# ============================================================================
+# OPTIONAL DEPENDENCIES (for specific utility scripts)
+# ============================================================================
+
+# For video augmentation (utils/augment_videos.py)
+# vidaug
+
+# For test report generation (utils/generate_test_report.py)
+# openpyxl
+
+# For training plot visualization (utils/plot_training_stats.py)
+# matplotlib
+
+# ============================================================================
+# DISTRIBUTED TRAINING (optional)
+# ============================================================================
+
+# For DeepSpeed distributed training
+# deepspeed
+
+# ============================================================================
+# VIDEO MAMBA SUPPORT (optional - not needed for basic Gemma-3N)
+# ============================================================================
+
+# IMPORTANT: mamba-ssm is NOT required for basic Gemma-3N fine-tuning
+# Only needed if using VideoMamba vision encoder (rarely used)
+# Installation often fails due to build issues - requires torch pre-installed
+# To install manually if needed: pip install mamba-ssm==1.2.0 --no-cache-dir --no-build-isolation
+# mamba-ssm==1.2.0

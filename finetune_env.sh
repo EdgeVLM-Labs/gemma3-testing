@@ -62,9 +62,8 @@ echo ""
 # 6. Video Processing Libraries
 # ----------------------------
 echo "🎥 [6/7] Installing video processing libraries..."
-pip install opencv-python opencv-contrib-python opencv-python-headless
+pip install opencv-python opencv-contrib-python
 pip install decord imageio Pillow einops einops-exts
-pip install albumentations scikit-image
 echo "✅ Video libraries installed"
 echo ""
 
@@ -73,8 +72,8 @@ echo ""
 # ----------------------------
 echo "📦 [7/7] Installing additional dependencies..."
 pip install wandb datasets huggingface_hub tqdm
-pip install timm mmengine
-pip install evaluate nltk sacrebleu scikit-learn
+pip install timm
+pip install evaluate nltk rouge-score scikit-learn
 echo "✅ Additional dependencies installed"
 echo ""
 

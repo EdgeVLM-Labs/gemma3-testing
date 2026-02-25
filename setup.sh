@@ -137,13 +137,9 @@ echo "    If you need VideoMamba support, install manually after setup completes
 echo "📦 Installing core dependencies..."
 pip install \
     opencv-python \
-    matplotlib \
     wandb \
     nltk \
     rouge-score \
-    sacrebleu \
-    openpyxl \
-    sentence-transformers \
     --quiet
 
 python - <<EOF

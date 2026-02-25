@@ -8,6 +8,14 @@ The video augmentation system creates additional training samples by applying va
 - Output maintains original video FPS
 - Output codec: mp4v (widely compatible)
 
+## Prerequisites
+
+The augmentation script requires `vidaug` which is not installed by default. Install it when needed:
+
+```bash
+pip install vidaug
+```
+
 ## Usage
 
 ### During Dataset Initialization

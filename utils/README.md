@@ -145,7 +145,10 @@ python utils/generate_test_report.py \
 - Summary statistics (mean, median, std dev, min, max)
 - BERT cosine similarity and METEOR scores
 
-**Dependencies:** `sentence-transformers`, `evaluate`, `openpyxl`, `sklearn`
+**Dependencies (Optional - install if needed):** 
+```bash
+pip install sentence-transformers openpyxl
+```
 
 ## Model Deployment
 

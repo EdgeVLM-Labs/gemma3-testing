@@ -154,10 +154,10 @@ conda activate gemma3n
 - `trl==0.22.2` (for SFTTrainer)
 - `unsloth` + `unsloth_zoo` (efficient LoRA training)
 - `torch>=2.1.0`, `accelerate`, `bitsandbytes`
-- Vision: `opencv-python`, `timm`, `Pillow`
+- Vision: `opencv-python`, `timm`, `Pillow`, `decord`, `einops`
 - Dataset: `datasets>=4.3.0`, `huggingface_hub`
 - Training: `wandb` (for tracking)
-- Evaluation: `nltk`, `rouge-score`, `sacrebleu`, `openpyxl`, `sentence-transformers`
+- Evaluation: `nltk`, `rouge-score`, `evaluate`
 
 ### 5. Verify Installation
 
