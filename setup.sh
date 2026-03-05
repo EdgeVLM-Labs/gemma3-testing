@@ -29,7 +29,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 if ! command -v conda &> /dev/null; then
     echo "Installing Miniconda..."
     wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
-    bash /tmp/miniconda.sh -b -p /root/miniconda
+    bash /tmp/miniconda.sh -b -u -p /root/miniconda
     rm -f /tmp/miniconda.sh
     export PATH="/root/miniconda/bin:$PATH"
     eval "$(/root/miniconda/bin/conda shell.bash hook)"
