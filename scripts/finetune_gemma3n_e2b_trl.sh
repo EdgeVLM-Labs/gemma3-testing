@@ -137,7 +137,7 @@ echo -e "${GREEN}✓ Video directory found: ${VIDEO_PATH}${NC}"
 
 # Check required Python packages
 echo -e "\n${YELLOW}Checking Python dependencies...${NC}"
-REQUIRED_PACKAGES=("torch" "transformers" "trl" "peft" "cv2" "PIL")
+REQUIRED_PACKAGES=("torch" "transformers" "trl" "peft" "timm" "cv2" "PIL")
 MISSING_PACKAGES=()
 
 for package in "${REQUIRED_PACKAGES[@]}"; do

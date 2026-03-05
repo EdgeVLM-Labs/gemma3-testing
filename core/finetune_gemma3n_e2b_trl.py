@@ -49,10 +49,10 @@ USAGE:
             --resume_from_checkpoint ./outputs/gemma3n-e2b-qved-ft/checkpoint-30
 
 REQUIREMENTS:
-    - torch, transformers>=4.49.0, trl, peft
+    - torch, transformers>=4.49.0, trl, peft, timm
     - opencv-python, Pillow
     - wandb (optional, for experiment tracking)
-    - Install: pip install -U torch transformers trl peft opencv-python Pillow wandb
+    - Install: pip install -U torch transformers trl peft timm opencv-python Pillow wandb
 
 DATASET FORMAT:
     JSON file with the following structure:
