@@ -24,11 +24,13 @@ fi
 # ----------------------------
 echo ""
 echo "[2/6] Setting up Conda..."
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 if ! command -v conda &> /dev/null; then
     echo "Installing Miniconda..."
-    cd /tmp
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
-    bash miniconda.sh -b -p /root/miniconda
+    wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh
+    bash /tmp/miniconda.sh -b -p /root/miniconda
+    rm -f /tmp/miniconda.sh
     export PATH="/root/miniconda/bin:$PATH"
     eval "$(/root/miniconda/bin/conda shell.bash hook)"
     conda init bash
@@ -86,7 +88,6 @@ pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorc
 # ----------------------------
 # Install requirements
 # ----------------------------
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
 if [ ! -f requirements.txt ]; then
