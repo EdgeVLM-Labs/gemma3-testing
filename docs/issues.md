@@ -137,14 +137,10 @@ The `mamba-ssm` package's `setup.py` requires PyTorch to be **already installed*
 
 ### Solution
 
-**Option 1: Use existing fix scripts (Recommended)**
+**Option 1: Re-run setup (Recommended)**
 
 ```bash
-# For complete environment fix (includes torch, unsloth, and mamba-ssm)
-bash fix_torch_int1.sh
-
-# OR for just the basic environment setup
-bash finetune_env.sh
+bash setup.sh
 ```
 
 **Option 2: Manual installation**
@@ -179,7 +175,7 @@ pip install mamba-ssm --no-cache-dir --no-build-isolation
 The installation order has been fixed in:
 - [`requirements.txt`](../requirements.txt) - PyTorch is now listed first with clear comments
 - [`setup.sh`](../setup.sh) - Installs PyTorch before other requirements
-- [`finetune_env.sh`](../finetune_env.sh) - Uses proper installation order
+- [`setup.sh`](../setup.sh) - Uses proper installation order
 
 ### Verification
 

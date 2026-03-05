@@ -122,7 +122,7 @@ def resize_image(img: Image.Image, target_width: int = 224, target_height: int =
     return img
 
 
-def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
+def extract_frames(video_path: str, num_frames: int = 16) -> List[Image.Image]:
     """
     Extract evenly spaced frames from a video file.
     
@@ -168,7 +168,7 @@ def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
     return frames
 
 
-def load_qved_dataset(json_path: str, data_path: str, num_frames: int = 8) -> Dataset:
+def load_qved_dataset(json_path: str, data_path: str, num_frames: int = 16) -> Dataset:
     """
     Load QVED dataset from JSON and extract video frames.
     
@@ -388,20 +388,20 @@ def main():
                         help="Output directory for checkpoints and model")
     
     # Training hyperparameters
-    parser.add_argument("--num_frames", type=int, default=8,
-                        help="Number of frames to extract from videos (default: 8, use 4-8 for 48GB GPU)")
+    parser.add_argument("--num_frames", type=int, default=16,
+                        help="Number of frames to extract from videos (default: 16)")
     parser.add_argument("--num_train_epochs", type=int, default=3,
                         help="Number of training epochs (default: 3)")
     parser.add_argument("--learning_rate", type=float, default=2e-4,
                         help="Learning rate (default: 2e-4)")
-    parser.add_argument("--per_device_train_batch_size", type=int, default=4,
-                        help="Training batch size per device (default: 4)")
-    parser.add_argument("--per_device_eval_batch_size", type=int, default=4,
-                        help="Evaluation batch size per device (default: 4)")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=8,
-                        help="Gradient accumulation steps (default: 8)")
-    parser.add_argument("--max_seq_length", type=int, default=1024,
-                        help="Maximum sequence length (default: 1024)")
+    parser.add_argument("--per_device_train_batch_size", type=int, default=8,
+                        help="Training batch size per device (default: 8)")
+    parser.add_argument("--per_device_eval_batch_size", type=int, default=8,
+                        help="Evaluation batch size per device (default: 8)")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=4,
+                        help="Gradient accumulation steps (default: 4)")
+    parser.add_argument("--max_seq_length", type=int, default=2048,
+                        help="Maximum sequence length (default: 2048)")
     
     # LoRA configuration
     parser.add_argument("--lora_r", type=int, default=64,
@@ -510,7 +510,7 @@ def main():
             torch_dtype=dtype,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
-            max_memory={0: "45GiB", "cpu": "120GiB"}  # Leave ~35GB for activations/gradients on 80GB GPU
+            max_memory={0: "40GiB", "cpu": "120GiB"}  # Leave headroom for activations/gradients on A40 (48GB)
         )
         
         processor = AutoProcessor.from_pretrained(

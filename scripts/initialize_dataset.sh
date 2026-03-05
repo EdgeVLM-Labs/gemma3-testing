@@ -130,8 +130,9 @@ AUGMENT_RESPONSE=$(echo "$AUGMENT_RESPONSE" | tr '[:upper:]' '[:lower:]')
 
 if [[ "$AUGMENT_RESPONSE" == "y" || "$AUGMENT_RESPONSE" == "yes" ]]; then
     echo ""
-    echo -e "${BLUE}Running: python utils/augment_videos.py${NC}"
-    python utils/augment_videos.py
+    echo -e "${BLUE}Running: python unsloth/augment_videos.py${NC}"
+    echo -e "${BLUE}(Requires unsloth - pip install unsloth unsloth_zoo)${NC}"
+    python unsloth/augment_videos.py
 
     if [ $? -ne 0 ]; then
         echo -e "${RED}Error: Dataset augmentation failed${NC}"

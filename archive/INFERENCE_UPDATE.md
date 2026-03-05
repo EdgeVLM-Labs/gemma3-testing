@@ -569,6 +569,6 @@ If your JSON has paths like `cat-cow_pose/00197706.mp4`, the script automaticall
 ## Related Files
 
 - Fine-tuning: `gemma3_finetune_unsloth.py`
-- Single video inference: `utils/infer_qved.py`
-- Evaluation script: `eval/eval_gemma3n.py`
+- Single video inference: `unsloth/infer_qved.py`
+- Evaluation script: `unsloth/eval_gemma3n.py`
 - Training wrapper: `scripts/finetune_gemma3n_unsloth.sh`

@@ -40,7 +40,7 @@ DATA_PATH="videos"
 OUTPUT_DIR=""
 DEVICE="cuda"
 MAX_NEW_TOKENS=256
-NUM_FRAMES=8
+NUM_FRAMES=16
 LIMIT="50"
 NO_BERT=""  # Enable BERT by default for evaluation
 
@@ -177,7 +177,7 @@ if [ -n "$LIMIT" ]; then
 fi
 
 set +e  # Don't exit on error for inference step
-python utils/test_inference_transformers.py \
+python core/inference.py \
     --model_path "$MODEL_PATH" \
     --test_json "$TEST_JSON" \
     --data_path "$DATA_PATH" \

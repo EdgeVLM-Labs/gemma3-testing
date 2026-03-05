@@ -60,9 +60,9 @@ OUTPUT_DIR="${OUTPUT_DIR:-./outputs/gemma3n-e2b-coach-ft-$(date +%Y%m%d_%H%M%S)}
 NUM_FRAMES="${NUM_FRAMES:-16}"            # Extract 16 frames per video
 EPOCHS="${EPOCHS:-3}"                     # 3 epochs
 LEARNING_RATE="${LEARNING_RATE:-2e-4}"   # 2e-4 LR
-BATCH_SIZE="${BATCH_SIZE:-4}"            # Batch size 4 (balanced for 80GB GPU)
-GRAD_ACCUM="${GRAD_ACCUM:-8}"            # Gradient accumulation 8 (effective batch size 32)
-MAX_SEQ_LEN="${MAX_SEQ_LEN:-1024}"       # Max sequence length 1024 (memory efficient for 80GB GPU)
+BATCH_SIZE="${BATCH_SIZE:-8}"            # Batch size 8
+GRAD_ACCUM="${GRAD_ACCUM:-4}"            # Gradient accumulation 4 (effective batch size 32)
+MAX_SEQ_LEN="${MAX_SEQ_LEN:-2048}"       # Max sequence length 2048
 
 # LoRA configuration
 LORA_R="${LORA_R:-64}"                   # LoRA r=64
@@ -74,7 +74,7 @@ WARMUP_RATIO="${WARMUP_RATIO:-0.05}"     # Warmup ratio 0.05
 SAVE_STEPS="${SAVE_STEPS:-30}"           # Save every 30 steps
 EVAL_STRATEGY="${EVAL_STRATEGY:-steps}"  # Evaluate by steps
 DATALOADER_WORKERS="${DATALOADER_WORKERS:-2}"  # 2 workers
-EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-4}"  # Eval batch size 4 (memory efficient)
+EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-8}"  # Eval batch size 8
 
 # Wandb configuration
 WANDB_PROJECT="${WANDB_PROJECT:-gemma3n-qved-finetuning}"
@@ -204,7 +204,7 @@ fi
 # Build command
 # ============================================================================
 
-CMD="python3 finetune_gemma3n_e2b_trl.py \
+CMD="python3 core/finetune_gemma3n_e2b_trl.py \
     --model_path ${MODEL_PATH} \
     --train_json ${TRAIN_JSON} \
     --data_path ${VIDEO_PATH} \
@@ -311,13 +311,13 @@ if [ $? -eq 0 ]; then
     echo -e "${GREEN}Model saved to: ${OUTPUT_DIR}${NC}"
     echo -e "\n${YELLOW}Next steps:${NC}"
     echo -e "  1. Evaluate the model:"
-    echo -e "     python utils/test_inference_transformers.py \\"
+    echo -e "     python core/inference.py \\"
     echo -e "       --model_path ${OUTPUT_DIR} \\"
     echo -e "       --test_json data/qved_test.json \\"
     echo -e "       --data_path ${VIDEO_PATH} \\"
     echo -e "       --output results.json"
     echo -e "\n  2. Run inference on new videos:"
-    echo -e "     python scripts/run_inference_transformers.sh ${OUTPUT_DIR}"
+    echo -e "     bash scripts/run_inference_transformers.sh ${OUTPUT_DIR}"
     echo -e "\n  3. Upload to HuggingFace Hub:"
     echo -e "     python utils/hf_upload.py --model_path ${OUTPUT_DIR}"
 else

@@ -39,7 +39,7 @@ The script will:
 You can also run the augmentation script independently:
 
 ```bash
-python utils/augment_videos.py
+python unsloth/augment_videos.py
 ```
 
 ## Available Augmentation Techniques

@@ -7,13 +7,13 @@ Supports both single video evaluation and batch evaluation.
 
 Usage:
     # Evaluate base model
-    python scripts/eval_gemma3n.py \
+    python unsloth/eval_gemma3n.py \
         --model_path google/gemma-3n-E2B-it \
         --eval_json dataset/qved_val.json \
         --output_file results/eval_base.json
     
     # Evaluate fine-tuned model
-    python scripts/eval_gemma3n.py \
+    python unsloth/eval_gemma3n.py \
         --model_path outputs/gemma3n_finetune_merged_16bit \
         --eval_json dataset/qved_val.json \
         --output_file results/eval_finetuned.json

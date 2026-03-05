@@ -6,8 +6,8 @@ This script runs inference on videos from the QVED test set using a finetuned Ge
 It loads videos from qved_test.json and generates predictions.
 
 Usage:
-    python utils/test_inference_unsloth.py --model_path outputs/gemma3n_finetune_20260108_162806_merged_16bit
-    python utils/test_inference_unsloth.py --model_path unsloth/gemma-3n-E4B-it --output test_predictions.json
+    python unsloth/test_inference_unsloth.py --model_path outputs/gemma3n_finetune_merged_16bit
+    python unsloth/test_inference_unsloth.py --model_path unsloth/gemma-3n-E4B-it --output test_predictions.json
 """
 
 import os

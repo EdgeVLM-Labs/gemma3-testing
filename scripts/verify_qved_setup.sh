@@ -156,10 +156,10 @@ fi
 
 # Check required scripts
 echo -e "\n[4] Checking required scripts..."
-if [ -f "scripts/finetune_qved.sh" ]; then
-    echo "✓ scripts/finetune_qved.sh found"
+if [ -f "scripts/finetune_gemma3n_e2b_trl.sh" ]; then
+    echo "✓ scripts/finetune_gemma3n_e2b_trl.sh found"
 else
-    echo "✗ scripts/finetune_qved.sh NOT found"
+    echo "✗ scripts/finetune_gemma3n_e2b_trl.sh NOT found"
 fi
 
 if [ -f "scripts/zero3.json" ]; then
@@ -171,18 +171,14 @@ fi
 # Check conda environment
 echo -e "\n[5] Checking conda environment..."
 if command -v conda &> /dev/null; then
-    if conda env list | grep -q "mobile_videogpt"; then
-        echo "✓ Conda environment 'mobile_videogpt' exists"
+    if conda env list | grep -q "gemma3n"; then
+        echo "✓ Conda environment 'gemma3n' exists"
     else
-        echo "✗ Conda environment 'mobile_videogpt' NOT found"
+        echo "✗ Conda environment 'gemma3n' NOT found"
     fi
 elif command -v python &> /dev/null; then
     python_path=$(which python)
-    if [[ $python_path == *"mobile_videogpt"* ]]; then
-        echo "✓ Python environment 'mobile_videogpt' is active"
-    else
-        echo "⚠ Conda not found, but Python is available at: $python_path"
-    fi
+    echo "⚠ Conda not found, but Python is available at: $python_path"
 else
     echo "✗ Neither conda nor python found"
 fi
@@ -201,6 +197,6 @@ echo -e "\n========================================="
 echo "Setup verification complete!"
 echo "========================================="
 echo -e "\nTo start finetuning, run:"
-echo "  conda activate mobile_videogpt"
-echo "  bash scripts/finetune_qved.sh"
+echo "  conda activate gemma3n"
+echo "  bash scripts/finetune_gemma3n_e2b_trl.sh"
 echo "========================================="
