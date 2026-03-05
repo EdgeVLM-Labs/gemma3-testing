@@ -7,9 +7,9 @@
 #     bash scripts/finetune_gemma3n_e2b_trl.sh
 #
 #   Custom dataset paths:
-#     TRAIN_JSON=data/custom_train.json \
-#     VAL_JSON=data/custom_val.json \
-#     VIDEO_PATH=data/videos \
+#     TRAIN_JSON=dataset/custom_train.json \
+#     VAL_JSON=dataset/custom_val.json \
+#     VIDEO_PATH=dataset \
 #     bash scripts/finetune_gemma3n_e2b_trl.sh
 #
 #   Custom hyperparameters:
@@ -49,9 +49,9 @@ echo -e "${BLUE}================================================================
 MODEL_PATH="${MODEL_PATH:-google/gemma-3n-E2B-it}"
 
 # Dataset paths
-TRAIN_JSON="${TRAIN_JSON:-data/qved_feedback_train.json}"
-VAL_JSON="${VAL_JSON:-data/qved_feedback_val.json}"
-VIDEO_PATH="${VIDEO_PATH:-videos}"
+TRAIN_JSON="${TRAIN_JSON:-dataset/qved_train.json}"
+VAL_JSON="${VAL_JSON:-dataset/qved_val.json}"
+VIDEO_PATH="${VIDEO_PATH:-dataset}"
 
 # Output directory
 OUTPUT_DIR="${OUTPUT_DIR:-./outputs/gemma3n-e2b-coach-ft-$(date +%Y%m%d_%H%M%S)}"
