@@ -440,12 +440,6 @@ def main():
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed (default: 42)")
 
-    # DeepSpeed
-    parser.add_argument("--deepspeed", type=str, default=None,
-                        help="Path to DeepSpeed config JSON (enables multi-GPU training)")
-    parser.add_argument("--local_rank", type=int, default=-1,
-                        help="Local rank for distributed training (set by DeepSpeed launcher)")
-
     # HuggingFace upload arguments
     parser.add_argument("--upload_to_hf", action="store_true",
                         help="Upload model to HuggingFace after training")
@@ -509,20 +503,13 @@ def main():
     try:
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         
-        # Load model - disable device_map when using DeepSpeed (it handles placement)
-        load_kwargs = {
-            "torch_dtype": dtype,
-            "trust_remote_code": True,
-            "low_cpu_mem_usage": True,
-        }
-        if args.deepspeed:
-            print("  DeepSpeed enabled - model will be distributed across GPUs")
-        else:
-            load_kwargs["device_map"] = "auto"
-            load_kwargs["max_memory"] = {0: "40GiB", "cpu": "120GiB"}
-
         model = Gemma3nForConditionalGeneration.from_pretrained(
-            args.model_path, **load_kwargs
+            args.model_path,
+            device_map="auto",
+            torch_dtype=dtype,
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,
+            max_memory={0: "40GiB", "cpu": "120GiB"},
         )
         
         processor = AutoProcessor.from_pretrained(
@@ -623,8 +610,6 @@ def main():
         metric_for_best_model="eval_loss" if args.eval_strategy != "no" and val_dataset else None,
         optim="paged_adamw_8bit",  # Use 8-bit optimizer to save memory
         max_grad_norm=1.0,  # Gradient clipping for stability
-        deepspeed=args.deepspeed,  # DeepSpeed config (None for single GPU)
-        ddp_find_unused_parameters=False if args.deepspeed else None,
     )
     
     # Create collate function

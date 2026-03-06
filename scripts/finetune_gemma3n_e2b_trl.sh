@@ -57,11 +57,11 @@ VIDEO_PATH="${VIDEO_PATH:-dataset}"
 OUTPUT_DIR="${OUTPUT_DIR:-./outputs/gemma3n-e2b-coach-ft-$(date +%Y%m%d_%H%M%S)}"
 
 # Training hyperparameters
-NUM_FRAMES="${NUM_FRAMES:-16}"            # Extract 16 frames per video
+NUM_FRAMES="${NUM_FRAMES:-8}"             # Extract 8 frames per video
 EPOCHS="${EPOCHS:-3}"                     # 3 epochs
 LEARNING_RATE="${LEARNING_RATE:-2e-4}"   # 2e-4 LR
-BATCH_SIZE="${BATCH_SIZE:-4}"            # Per-device batch size 4 (total 8 with 2 GPUs)
-GRAD_ACCUM="${GRAD_ACCUM:-4}"            # Gradient accumulation 4 (effective batch size 32 with 2 GPUs)
+BATCH_SIZE="${BATCH_SIZE:-4}"            # Batch size 4 (A40 48GB)
+GRAD_ACCUM="${GRAD_ACCUM:-8}"           # Gradient accumulation 8 (effective batch size 32)
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-2048}"       # Max sequence length 2048
 
 # LoRA configuration
@@ -74,7 +74,7 @@ WARMUP_RATIO="${WARMUP_RATIO:-0.05}"     # Warmup ratio 0.05
 SAVE_STEPS="${SAVE_STEPS:-30}"           # Save every 30 steps
 EVAL_STRATEGY="${EVAL_STRATEGY:-steps}"  # Evaluate by steps
 DATALOADER_WORKERS="${DATALOADER_WORKERS:-2}"  # 2 workers
-EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-4}"  # Per-device eval batch size 4
+EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-1}"  # Eval batch size 1 (A40 48GB)
 
 # Wandb configuration
 WANDB_PROJECT="${WANDB_PROJECT:-gemma3n-qved-finetuning}"
@@ -204,21 +204,7 @@ fi
 # Build command
 # ============================================================================
 
-# Auto-detect multi-GPU and use DeepSpeed
-NUM_GPUS=$(python3 -c "import torch; print(torch.cuda.device_count())" 2>/dev/null || echo "1")
-DEEPSPEED_CONFIG="${DEEPSPEED_CONFIG:-scripts/zero2.json}"
-
-if [ "$NUM_GPUS" -gt 1 ]; then
-    echo -e "${BLUE}🚀 Multi-GPU detected (${NUM_GPUS} GPUs) - using DeepSpeed ZeRO Stage 2${NC}"
-    LAUNCHER="deepspeed --num_gpus=${NUM_GPUS}"
-    DEEPSPEED_ARG="--deepspeed ${DEEPSPEED_CONFIG}"
-else
-    echo -e "${BLUE}Single GPU detected - using standard training${NC}"
-    LAUNCHER="python3"
-    DEEPSPEED_ARG=""
-fi
-
-CMD="${LAUNCHER} core/finetune_gemma3n_e2b_trl.py \
+CMD="python3 core/finetune_gemma3n_e2b_trl.py \
     --model_path ${MODEL_PATH} \
     --train_json ${TRAIN_JSON} \
     --data_path ${VIDEO_PATH} \
@@ -240,8 +226,7 @@ CMD="${LAUNCHER} core/finetune_gemma3n_e2b_trl.py \
     --gradient_checkpointing \
     --wandb_project ${WANDB_PROJECT} \
     --run_name ${RUN_NAME} \
-    --seed ${SEED} \
-    ${DEEPSPEED_ARG}"
+    --seed ${SEED}"
 
 # Add validation dataset if provided
 if [ -n "$VAL_JSON" ]; then
