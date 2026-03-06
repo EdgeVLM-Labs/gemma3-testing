@@ -504,14 +504,14 @@ def main():
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         
         # 4-bit quantization config (QLoRA) - reduces model from ~36GB to ~8GB
-        # Skip AltUp modules from quantization - their prediction_coefs use clamp_()
-        # which fails on quantized uint8 weights
+        # Skip AltUp coefficient modules from quantization - they use clamp_()
+        # which fails on quantized uint8 weights (prediction_coefs + correction_coefs)
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=dtype,
             bnb_4bit_use_double_quant=True,
-            llm_int8_skip_modules=["prediction_coefs"],
+            llm_int8_skip_modules=["prediction_coefs", "correction_coefs"],
         )
 
         model = Gemma3nForConditionalGeneration.from_pretrained(
