@@ -84,8 +84,8 @@ import cv2
 import torch
 from datasets import Dataset
 from PIL import Image
-from peft import LoraConfig
-from transformers import AutoProcessor, Gemma3nForConditionalGeneration
+from peft import LoraConfig, prepare_model_for_kbit_training
+from transformers import AutoProcessor, Gemma3nForConditionalGeneration, BitsAndBytesConfig
 from trl import SFTConfig, SFTTrainer
 
 # Optional wandb import
@@ -503,23 +503,34 @@ def main():
     try:
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         
+        # 4-bit quantization config (QLoRA) - reduces model from ~36GB to ~8GB
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=dtype,
+            bnb_4bit_use_double_quant=True,
+        )
+
         model = Gemma3nForConditionalGeneration.from_pretrained(
             args.model_path,
             device_map="auto",
+            quantization_config=bnb_config,
             torch_dtype=dtype,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
-            max_memory={0: "40GiB", "cpu": "120GiB"},
         )
-        
+
+        # Prepare model for QLoRA training
+        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=args.gradient_checkpointing)
+
         processor = AutoProcessor.from_pretrained(
             args.model_path,
             trust_remote_code=True
         )
         processor.tokenizer.padding_side = "right"
-        
-        print(f"✓ Model loaded: {type(model).__name__}")
-        print(f"  Model dtype: {model.dtype}")
+
+        print(f"✓ Model loaded with 4-bit quantization (QLoRA)")
+        print(f"  Model dtype: {dtype}")
         print(f"✓ Processor loaded: {type(processor).__name__}")
         
     except Exception as e:
