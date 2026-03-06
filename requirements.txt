@@ -49,6 +49,6 @@ rouge-score
 # matplotlib            # utils/plot_training_stats.py
 # scikit-learn          # utils/generate_test_report.py
 # sentence-transformers # utils/generate_test_report.py
-# deepspeed             # distributed training
+deepspeed              # multi-GPU distributed training
 # unsloth               # unsloth/ scripts (alternative fine-tuning)
 # unsloth_zoo           # unsloth/ scripts
