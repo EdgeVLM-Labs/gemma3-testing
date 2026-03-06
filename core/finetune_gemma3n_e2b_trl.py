@@ -511,7 +511,7 @@ def main():
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=dtype,
             bnb_4bit_use_double_quant=True,
-            llm_int8_skip_modules=["altup", "lm_head"],
+            llm_int8_skip_modules=["prediction_coefs"],
         )
 
         model = Gemma3nForConditionalGeneration.from_pretrained(
