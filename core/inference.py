@@ -45,7 +45,7 @@ def resize_image(img: Image.Image, target_width: int = 640, target_height: int =
     return img
 
 
-def extract_frames(video_path: str, num_frames: int = 16) -> List[Tuple[Image.Image, float]]:
+def extract_frames(video_path: str, num_frames: int = 8) -> List[Tuple[Image.Image, float]]:
     """
     Extract evenly spaced frames from a video file.
     
@@ -207,7 +207,7 @@ def main():
                         choices=["cuda", "cpu"], help="Device to use")
     parser.add_argument("--max_new_tokens", type=int, default=256,
                         help="Maximum tokens to generate")
-    parser.add_argument("--num_frames", type=int, default=16,
+    parser.add_argument("--num_frames", type=int, default=8,
                         help="Number of frames to extract from videos")
     parser.add_argument("--limit", type=int, default=None,
                         help="Limit number of samples to process")
