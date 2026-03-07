@@ -29,7 +29,7 @@ OUTPUT_TEST_JSON = BASE_DIR / "qved_test.json"
 OUTPUT_FEEDBACKS_TRAIN_JSON = BASE_DIR / "qved_feedbacks_train.json"
 OUTPUT_FEEDBACKS_VAL_JSON = BASE_DIR / "qved_feedbacks_val.json"
 OUTPUT_FEEDBACKS_TEST_JSON = BASE_DIR / "qved_feedbacks_test.json"
-USER_PROMPT_TEMPLATE = "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend?"
+USER_PROMPT_TEMPLATE = "Watch the exercise being performed and provide short corrective feedback to help improve the form."
 FEEDBACK_PROMPT_TEMPLATE = "Please evaluate the exercise form shown. What feedback would you provide to improve the performance?"
 
 # Which field from fine_grained_labels.json to use as the assistant answer
