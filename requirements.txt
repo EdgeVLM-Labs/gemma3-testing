@@ -40,15 +40,18 @@ numpy<2.0
 tqdm
 nltk
 rouge-score
+evaluate                # utils/generate_test_report.py (BLEU/ROUGE metrics)
+scikit-learn            # utils/generate_test_report.py (cosine similarity)
+sentence-transformers   # utils/generate_test_report.py (BERT similarity)
+openpyxl                # utils/generate_test_report.py (Excel reports)
+matplotlib              # utils/plot_training_stats.py (training plots)
 
 # ============================================================================
 # OPTIONAL (uncomment if needed)
 # ============================================================================
 
-# openpyxl              # utils/generate_test_report.py
-# matplotlib            # utils/plot_training_stats.py
-# scikit-learn          # utils/generate_test_report.py
-# sentence-transformers # utils/generate_test_report.py
+# pandas               # utils/clean_dataset.py
+# tabulate             # utils/clean_dataset.py
 deepspeed              # multi-GPU distributed training
 # unsloth               # unsloth/ scripts (alternative fine-tuning)
 # unsloth_zoo           # unsloth/ scripts

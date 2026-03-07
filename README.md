@@ -21,11 +21,7 @@ conda activate gemma3n
 bash scripts/initialize_dataset.sh
 
 # 4. Fine-tune
-python core/finetune_gemma3n_e2b_trl.py \
-  --train_json dataset/qved_train.json \
-  --val_json dataset/qved_val.json \
-  --video_path dataset \
-  --output_dir outputs/gemma3n_finetune
+bash scripts/finetune_gemma3n_e2b_trl.sh
 
 # 5. Run inference on test set
 bash scripts/run_inference_transformers.sh \
@@ -56,10 +52,8 @@ gemma3-testing/
 │   ├── load_dataset.py               # Download QVED dataset
 │   ├── filter_ground_truth.py        # Filter labels to downloaded videos
 │   ├── generate_test_report.py       # Evaluation report generation
-│   ├── plot_training_stats.py        # Training visualization
-│   ├── test_inference_transformers.py # Transformers-based batch inference
-│   └── ...
-├── unsloth/                          # Unsloth-based scripts (alternative)
+│   └── plot_training_stats.py        # Training visualization
+├── unsloth/                          # Unsloth-based alternative pipeline
 ├── archive/                          # Legacy/deprecated code
 ├── docs/                             # Documentation
 ├── dataset/                          # Video dataset (after download)
@@ -72,7 +66,7 @@ gemma3-testing/
 
 ### Prerequisites
 - Linux (Ubuntu 20.04+)
-- NVIDIA GPU with CUDA support (16GB+ VRAM recommended)
+- NVIDIA GPU with CUDA support (A40 48GB recommended)
 - 50GB+ free disk space
 
 ### Install
@@ -84,7 +78,7 @@ This will:
 1. Install system dependencies
 2. Create conda environment `gemma3n` (Python 3.11)
 3. Install PyTorch 2.5.1 with CUDA 12.1
-4. Install all Python dependencies
+4. Install all Python dependencies (transformers, trl, peft, timm, bitsandbytes, etc.)
 5. Prompt for HuggingFace and WandB authentication
 
 ---
@@ -101,26 +95,39 @@ bash scripts/finetune_gemma3n_e2b_trl.sh
 python core/finetune_gemma3n_e2b_trl.py \
   --train_json dataset/qved_train.json \
   --val_json dataset/qved_val.json \
-  --video_path dataset \
+  --data_path dataset \
   --output_dir outputs/gemma3n_finetune \
-  --num_epochs 3 \
-  --batch_size 4 \
+  --num_train_epochs 3 \
+  --per_device_train_batch_size 1 \
+  --gradient_accumulation_steps 32 \
   --learning_rate 2e-4 \
-  --lora_r 64
+  --lora_r 64 \
+  --num_frames 8
 ```
 
-### Key parameters
+### Hyperparameters (A40 48GB)
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--train_json` | required | Path to training dataset JSON |
-| `--val_json` | optional | Path to validation dataset JSON |
-| `--video_path` | required | Base path for video files |
-| `--output_dir` | required | Where to save checkpoints |
-| `--num_epochs` | 3 | Number of training epochs |
-| `--batch_size` | 8 | Per-device batch size |
+| `--train_json` | `dataset/qved_train.json` | Path to training dataset JSON |
+| `--val_json` | `dataset/qved_val.json` | Path to validation dataset JSON |
+| `--data_path` | `dataset` | Base path for video files |
+| `--output_dir` | auto-generated | Where to save checkpoints |
+| `--num_train_epochs` | 3 | Number of training epochs |
+| `--per_device_train_batch_size` | 1 | Per-device batch size |
+| `--gradient_accumulation_steps` | 32 | Gradient accumulation (effective batch = 32) |
 | `--learning_rate` | 2e-4 | Learning rate |
 | `--lora_r` | 64 | LoRA rank |
-| `--num_frames` | 16 | Frames to extract per video |
+| `--lora_alpha` | 128 | LoRA alpha |
+| `--num_frames` | 8 | Frames to extract per video |
+| `--max_seq_length` | 1024 | Maximum sequence length |
+| `--warmup_ratio` | 0.05 | Warmup ratio |
+| `--dataloader_num_workers` | 2 | Dataloader workers |
+
+### Override defaults via environment variables
+```bash
+BATCH_SIZE=2 GRAD_ACCUM=16 NUM_FRAMES=16 bash scripts/finetune_gemma3n_e2b_trl.sh
+```
 
 ---
 
@@ -158,9 +165,11 @@ bash scripts/initialize_dataset.sh
 
 ## Tech Stack
 
-- **Model:** Google Gemma-3N-E2B-it
+- **Model:** Google Gemma-3N-E2B-it (~2B effective parameters)
 - **Training:** Hugging Face Transformers 4.56.2 + TRL 0.22.2
-- **Fine-tuning:** LoRA via PEFT
+- **Fine-tuning:** LoRA via PEFT (r=64, alpha=128)
+- **Optimizer:** Paged AdamW 8-bit (via bitsandbytes)
+- **Vision encoder:** timm (MobileNetV5 via TimmWrapper)
 - **Video processing:** OpenCV + Pillow
 - **Monitoring:** Weights & Biases
 - **Evaluation:** ROUGE, BLEU, NLTK
@@ -174,8 +183,11 @@ bash scripts/initialize_dataset.sh
 2. Request access and accept terms
 3. Run `huggingface-cli login`
 
-**CUDA Out of Memory:**
-Reduce batch size or number of frames in the training script.
+**CUDA Out of Memory (A40 48GB):**
+- Use `batch_size=1` with `grad_accum=32` (default)
+- Use `num_frames=8` (default)
+- Use `max_seq_length=1024` (default)
+- If still OOM, try reducing `lora_r` from 64 to 32
 
 **Dependency issues:**
 Re-run `bash setup.sh`

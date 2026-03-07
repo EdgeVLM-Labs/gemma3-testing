@@ -40,7 +40,7 @@ DATA_PATH="videos"
 OUTPUT_DIR=""
 DEVICE="cuda"
 MAX_NEW_TOKENS=256
-x``
+NUM_FRAMES=16
 LIMIT="50"
 NO_BERT=""  # Enable BERT by default for evaluation
 

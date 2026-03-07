@@ -57,12 +57,12 @@ VIDEO_PATH="${VIDEO_PATH:-dataset}"
 OUTPUT_DIR="${OUTPUT_DIR:-./outputs/gemma3n-e2b-coach-ft-$(date +%Y%m%d_%H%M%S)}"
 
 # Training hyperparameters
-NUM_FRAMES="${NUM_FRAMES:-8}"             # Extract 8 frames per video
+NUM_FRAMES="${NUM_FRAMES:-16}"            # Extract 16 frames per video
 EPOCHS="${EPOCHS:-3}"                     # 3 epochs
 LEARNING_RATE="${LEARNING_RATE:-2e-4}"   # 2e-4 LR
 BATCH_SIZE="${BATCH_SIZE:-1}"            # Batch size 1 (QLoRA on A40 48GB)
 GRAD_ACCUM="${GRAD_ACCUM:-32}"           # Gradient accumulation 32 (effective batch size 32)
-MAX_SEQ_LEN="${MAX_SEQ_LEN:-1024}"       # Max sequence length 1024
+MAX_SEQ_LEN="${MAX_SEQ_LEN:-2048}"       # Max sequence length 2048
 
 # LoRA configuration
 LORA_R="${LORA_R:-64}"                   # LoRA r=64
