@@ -587,20 +587,15 @@ def main():
     # Configure training
     print("\n⚙️  Configuring training...")
     
-    # Adjust save_steps to be compatible with load_best_model_at_end
-    # save_steps must be a multiple of eval_steps when load_best_model_at_end is True
-    save_steps = args.save_steps
-    if args.eval_strategy == "steps" and val_dataset:
-        eval_steps = 30  # Using hardcoded eval_steps value
-        # Make save_steps a multiple of eval_steps
-        if save_steps % eval_steps != 0:
-            save_steps = eval_steps
-            print(f"  Adjusted save_steps from {args.save_steps} to {save_steps} (must be multiple of eval_steps={eval_steps})")
-    
+    # Use dynamically calculated eval_steps based on dataset size
+    eval_steps = steps_info['eval_steps']  # ~5 evals per epoch
+    save_steps = eval_steps  # Save at every eval for load_best_model_at_end compatibility
+    print(f"  Eval every {eval_steps} step(s), save every {save_steps} step(s)")
+
     training_args = SFTConfig(
         output_dir=args.output_dir,
         eval_strategy=args.eval_strategy,
-        eval_steps=30 if args.eval_strategy == "steps" else None,
+        eval_steps=eval_steps if args.eval_strategy == "steps" else None,
         per_device_train_batch_size=args.per_device_train_batch_size,
         per_device_eval_batch_size=args.per_device_eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
