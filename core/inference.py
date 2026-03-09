@@ -120,27 +120,16 @@ def get_video_inference(
     images = [img for img, timestamp in video_frames]
     
     try:
-        # Construct messages in the proper Gemma 3n chat format
-        # Add detailed instructions to the user prompt with images
-        detailed_prompt = (
-            f"{prompt}\n\n"
-            "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend? "
-            "Always provide your response in the following format:\n"
-            "<exercise_name> - <detailed_feedback>\n\n"
-            "Where <exercise_name> is the name of the exercise being performed, "
-            "and <detailed_feedback> describes the form, technique, mistakes (if any), and recommendations."
-        )
-        
+        # Construct messages matching the training chat template exactly
         messages = [
             {
                 "role": "system",
-                "content": [{"type": "text", "text": "You are a helpful assistant analyzing physiotherapy exercise videos."}]
+                "content": [{"type": "text", "text": "You are a helpful physiotherapy assistant."}]
             },
             {
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": detailed_prompt}
-                ] + [{"type": "image", "image": img} for img in images]
+                "content": [{"type": "image", "image": img} for img in images]
+                          + [{"type": "text", "text": prompt}]
             }
         ]
         
@@ -295,16 +284,6 @@ def main():
         # Construct full path
         full_path = os.path.join(args.data_path, video_path)
         
-        # Format the detailed question that will be sent to the model
-        detailed_question = (
-            f"{question}\n\n"
-            "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend? "
-            "Always provide your response in the following format:\n"
-            "<exercise_name> - <detailed_feedback>\n\n"
-            "Where <exercise_name> is the name of the exercise being performed, "
-            "and <detailed_feedback> describes the form, technique, mistakes (if any), and recommendations."
-        )
-        
         if not os.path.exists(full_path):
             print(f"\n⚠️  Video not found: {full_path}")
             prediction = "[ERROR: Video file not found]"
@@ -321,7 +300,7 @@ def main():
         
         predictions.append({
             "video_path": video_path,
-            "question": detailed_question,
+            "question": question,
             "ground_truth": ground_truth,
             "prediction": prediction
         })
