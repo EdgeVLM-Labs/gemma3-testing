@@ -64,6 +64,9 @@ BATCH_SIZE="${BATCH_SIZE:-8}"            # Batch size 8 (QLoRA on A100 80GB)
 GRAD_ACCUM="${GRAD_ACCUM:-4}"            # Gradient accumulation 4 (effective batch size 32)
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-2048}"       # Max sequence length 2048
 
+# Quantization: set USE_QLORA=true for 4-bit QLoRA (A40 48GB), false for bf16 LoRA (A100 80GB)
+USE_QLORA="${USE_QLORA:-false}"
+
 # LoRA configuration
 LORA_R="${LORA_R:-64}"                   # LoRA r=64
 LORA_ALPHA="${LORA_ALPHA:-128}"          # LoRA alpha=128
@@ -231,6 +234,12 @@ CMD="python3 core/finetune_gemma3n_e2b_trl.py \
 # Add validation dataset if provided
 if [ -n "$VAL_JSON" ]; then
     CMD="${CMD} --val_json ${VAL_JSON}"
+fi
+
+# Add QLoRA flag if enabled
+if [ "$USE_QLORA" = "true" ]; then
+    CMD="${CMD} --use_qlora"
+    echo -e "  Using QLoRA 4-bit quantization"
 fi
 
 # Add resume checkpoint if provided

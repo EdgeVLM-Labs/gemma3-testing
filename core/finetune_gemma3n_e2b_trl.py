@@ -122,50 +122,86 @@ def resize_image(img: Image.Image, target_width: int = 224, target_height: int =
     return img
 
 
-def extract_frames(video_path: str, num_frames: int = 16) -> List[Image.Image]:
+def extract_frames(video_path: str, num_frames: int = 16, timeout: int = 30) -> List[Image.Image]:
     """
     Extract evenly spaced frames from a video file.
-    
+
     Args:
         video_path: Path to video file
-        num_frames: Number of frames to extract (default: 8)
-    
+        num_frames: Number of frames to extract (default: 16)
+        timeout: Max seconds to spend on a single video (default: 30)
+
     Returns:
         List of PIL Images
     """
-    cap = cv2.VideoCapture(video_path)
-    
-    if not cap.isOpened():
-        print(f"❌ Error: Could not open video file: {video_path}")
-        return []
-    
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    
-    if total_frames == 0 or fps == 0:
-        print(f"❌ Error: Invalid video file: {video_path}")
+    import signal
+
+    def _timeout_handler(signum, frame):
+        raise TimeoutError(f"Timed out extracting frames from: {video_path}")
+
+    try:
+        # Set timeout to avoid hanging on corrupted videos
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(timeout)
+
+        cap = cv2.VideoCapture(video_path)
+
+        if not cap.isOpened():
+            print(f"❌ Error: Could not open video file: {video_path}")
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+            return []
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+
+        if total_frames == 0 or fps == 0:
+            print(f"❌ Error: Invalid video file: {video_path}")
+            cap.release()
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+            return []
+
+        # Calculate step size to evenly distribute frames
+        step = max(1, total_frames // num_frames)
+        frames = []
+
+        for i in range(num_frames):
+            frame_idx = min(i * step, total_frames - 1)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+
+            if not ret:
+                break
+
+            # Convert BGR to RGB
+            img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            img = resize_image(img, target_width=224, target_height=224)
+            frames.append(img)
+
         cap.release()
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
+        return frames
+
+    except TimeoutError:
+        print(f"⚠️  Timeout extracting frames from: {video_path}")
+        try:
+            cap.release()
+        except Exception:
+            pass
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
         return []
-    
-    # Calculate step size to evenly distribute frames
-    step = max(1, total_frames // num_frames)
-    frames = []
-    
-    for i in range(num_frames):
-        frame_idx = min(i * step, total_frames - 1)
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-        ret, frame = cap.read()
-        
-        if not ret:
-            break
-        
-        # Convert BGR to RGB
-        img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        img = resize_image(img, target_width=224, target_height=224)
-        frames.append(img)
-    
-    cap.release()
-    return frames
+    except Exception as e:
+        print(f"⚠️  Error extracting frames from {video_path}: {e}")
+        try:
+            cap.release()
+        except Exception:
+            pass
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
+        return []
 
 
 def load_qved_dataset(json_path: str, data_path: str, num_frames: int = 16) -> Dataset:
@@ -434,6 +470,11 @@ def main():
     parser.add_argument("--no_wandb", action="store_true",
                         help="Disable wandb logging")
     
+    # Quantization
+    parser.add_argument("--use_qlora", action="store_true", default=False,
+                        help="Use QLoRA 4-bit quantization (saves VRAM, needed for A40). "
+                             "Default: bf16 LoRA (better quality, needs A100 80GB)")
+
     # Other arguments
     parser.add_argument("--resume_from_checkpoint", type=str, default=None,
                         help="Resume training from checkpoint")
@@ -502,39 +543,54 @@ def main():
     print("\n📦 Loading model and processor...")
     try:
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-        
-        # 4-bit quantization config (QLoRA) - reduces model from ~36GB to ~8GB
-        # Skip modules incompatible with 4-bit quantization:
-        # - prediction_coefs/correction_coefs: AltUp uses clamp_() which fails on uint8
-        # - lm_head: newly initialized (not from checkpoint), 4-bit state invalid
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=dtype,
-            bnb_4bit_use_double_quant=True,
-            llm_int8_skip_modules=["prediction_coefs", "correction_coefs", "lm_head"],
-        )
 
-        model = Gemma3nForConditionalGeneration.from_pretrained(
-            args.model_path,
-            device_map="auto",
-            quantization_config=bnb_config,
-            torch_dtype=dtype,
-            trust_remote_code=True,
-            low_cpu_mem_usage=True,
-        )
+        if args.use_qlora:
+            # QLoRA: 4-bit quantization - reduces model from ~36GB to ~8GB
+            # Skip modules incompatible with 4-bit quantization:
+            # - prediction_coefs/correction_coefs: AltUp uses clamp_() which fails on uint8
+            # - lm_head: newly initialized (not from checkpoint), 4-bit state invalid
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=dtype,
+                bnb_4bit_use_double_quant=True,
+                llm_int8_skip_modules=["prediction_coefs", "correction_coefs", "lm_head"],
+            )
 
-        # Prepare model for QLoRA training
-        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=args.gradient_checkpointing)
+            model = Gemma3nForConditionalGeneration.from_pretrained(
+                args.model_path,
+                device_map="auto",
+                quantization_config=bnb_config,
+                torch_dtype=dtype,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,
+            )
+
+            # Prepare model for QLoRA training
+            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=args.gradient_checkpointing)
+            print(f"✓ Model loaded with QLoRA 4-bit quantization")
+        else:
+            # bf16 LoRA: full precision weights, LoRA adapters only trained
+            # Better quality, requires more VRAM (A100 80GB recommended)
+            model = Gemma3nForConditionalGeneration.from_pretrained(
+                args.model_path,
+                device_map="auto",
+                torch_dtype=dtype,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,
+            )
+
+            if args.gradient_checkpointing:
+                model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+            print(f"✓ Model loaded in {dtype} (LoRA, no quantization)")
+
+        print(f"  Model dtype: {dtype}")
 
         processor = AutoProcessor.from_pretrained(
             args.model_path,
             trust_remote_code=True
         )
         processor.tokenizer.padding_side = "right"
-
-        print(f"✓ Model loaded with 4-bit quantization (QLoRA)")
-        print(f"  Model dtype: {dtype}")
         print(f"✓ Processor loaded: {type(processor).__name__}")
         
     except Exception as e:
