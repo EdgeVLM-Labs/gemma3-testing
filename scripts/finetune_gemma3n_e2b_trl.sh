@@ -83,6 +83,9 @@ EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-4}"  # Eval batch size 4
 WANDB_PROJECT="${WANDB_PROJECT:-gemma3n-qved-finetuning}"
 RUN_NAME="${RUN_NAME:-gemma3n-e2b-lr${LEARNING_RATE}-r${LORA_R}-epochs${EPOCHS}}"
 
+# Pipeline testing
+LIMIT="${LIMIT:-}"                           # Empty = use all data, set to limit samples
+
 # Other settings
 RESUME_CHECKPOINT="${RESUME_CHECKPOINT:-}"  # Empty = train from scratch
 SEED="${SEED:-42}"
@@ -189,6 +192,10 @@ echo -e "${BLUE}Wandb:${NC}"
 echo -e "  Project:                 ${WANDB_PROJECT}"
 echo -e "  Run name:                ${RUN_NAME}"
 echo -e "  Mode:                    ${WANDB_MODE:-online}"
+if [ -n "$LIMIT" ]; then
+echo -e ""
+echo -e "${YELLOW}⚠️  PIPELINE TEST MODE: Limited to ${LIMIT} samples${NC}"
+fi
 echo -e "${BLUE}========================================================================${NC}"
 
 # ============================================================================
@@ -246,6 +253,12 @@ fi
 if [ -n "$RESUME_CHECKPOINT" ]; then
     CMD="${CMD} --resume_from_checkpoint ${RESUME_CHECKPOINT}"
     echo -e "${BLUE}Resuming from checkpoint: ${RESUME_CHECKPOINT}${NC}"
+fi
+
+# Add limit if provided (for pipeline testing)
+if [ -n "$LIMIT" ]; then
+    CMD="${CMD} --limit ${LIMIT}"
+    echo -e "${YELLOW}⚠️  Limited to ${LIMIT} samples (pipeline test mode)${NC}"
 fi
 
 # Disable wandb if requested

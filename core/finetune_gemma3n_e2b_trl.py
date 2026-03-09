@@ -372,6 +372,8 @@ def main():
     # Training hyperparameters
     parser.add_argument("--num_frames", type=int, default=16,
                         help="Number of frames to extract from videos (default: 16)")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Limit number of training/val samples (for testing the pipeline)")
     parser.add_argument("--num_train_epochs", type=int, default=3,
                         help="Number of training epochs (default: 3)")
     parser.add_argument("--learning_rate", type=float, default=2e-4,
@@ -563,13 +565,22 @@ def main():
     # Load datasets
     print("\n📂 Loading and processing datasets...")
     train_dataset = load_qved_dataset(args.train_json, args.data_path, args.num_frames)
-    
+
     val_dataset = None
     if args.val_json and args.eval_strategy != "no":
         val_dataset = load_qved_dataset(args.val_json, args.data_path, args.num_frames)
-        print(f"✓ Validation set: {len(val_dataset)} samples")
-    
+
+    # Apply limit for pipeline testing
+    if args.limit:
+        train_dataset = train_dataset.select(range(min(args.limit, len(train_dataset))))
+        if val_dataset:
+            val_limit = min(args.limit, len(val_dataset))
+            val_dataset = val_dataset.select(range(val_limit))
+        print(f"⚠️  Limited to {args.limit} samples for pipeline testing")
+
     print(f"✓ Training set: {len(train_dataset)} samples")
+    if val_dataset:
+        print(f"✓ Validation set: {len(val_dataset)} samples")
     
     # Calculate steps
     steps_info = calculate_steps(
@@ -749,6 +760,8 @@ def main():
                     "--data_path", "dataset",
                     "--num_frames", str(args.num_frames),
                 ]
+                if args.limit:
+                    inference_cmd.extend(["--limit", str(args.limit)])
                 print(f"Running: {' '.join(inference_cmd)}\n")
                 inference_result = subprocess.run(inference_cmd)
                 if inference_result.returncode == 0:
