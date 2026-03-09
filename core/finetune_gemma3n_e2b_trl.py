@@ -69,11 +69,11 @@ DATASET FORMAT:
 """
 
 import argparse
-import io
 import json
 import math
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import List, Optional
 
@@ -125,6 +125,7 @@ def resize_image(img: Image.Image, target_width: int = 224, target_height: int =
 def extract_frames(video_path: str, num_frames: int = 16, timeout: int = 30) -> List[Image.Image]:
     """
     Extract evenly spaced frames from a video file.
+    Uses thread-based timeout (safe for dataloader workers, unlike signal.SIGALRM).
 
     Args:
         video_path: Path to video file
@@ -134,117 +135,87 @@ def extract_frames(video_path: str, num_frames: int = 16, timeout: int = 30) -> 
     Returns:
         List of PIL Images
     """
-    import signal
+    result = []
+    error = [None]
 
-    def _timeout_handler(signum, frame):
-        raise TimeoutError(f"Timed out extracting frames from: {video_path}")
+    def _extract():
+        try:
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                error[0] = f"Could not open video: {video_path}"
+                return
 
-    try:
-        # Set timeout to avoid hanging on corrupted videos
-        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-        signal.alarm(timeout)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
 
-        cap = cv2.VideoCapture(video_path)
+            if total_frames == 0 or fps == 0:
+                error[0] = f"Invalid video (0 frames/fps): {video_path}"
+                cap.release()
+                return
 
-        if not cap.isOpened():
-            print(f"❌ Error: Could not open video file: {video_path}")
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
-            return []
+            step = max(1, total_frames // num_frames)
+            for i in range(num_frames):
+                frame_idx = min(i * step, total_frames - 1)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                img = resize_image(img, target_width=224, target_height=224)
+                result.append(img)
 
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-
-        if total_frames == 0 or fps == 0:
-            print(f"❌ Error: Invalid video file: {video_path}")
             cap.release()
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
-            return []
+        except Exception as e:
+            error[0] = str(e)
 
-        # Calculate step size to evenly distribute frames
-        step = max(1, total_frames // num_frames)
-        frames = []
+    thread = threading.Thread(target=_extract, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
 
-        for i in range(num_frames):
-            frame_idx = min(i * step, total_frames - 1)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ret, frame = cap.read()
-
-            if not ret:
-                break
-
-            # Convert BGR to RGB
-            img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            img = resize_image(img, target_width=224, target_height=224)
-            frames.append(img)
-
-        cap.release()
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
-        return frames
-
-    except TimeoutError:
+    if thread.is_alive():
         print(f"⚠️  Timeout extracting frames from: {video_path}")
-        try:
-            cap.release()
-        except Exception:
-            pass
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
         return []
-    except Exception as e:
-        print(f"⚠️  Error extracting frames from {video_path}: {e}")
-        try:
-            cap.release()
-        except Exception:
-            pass
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
+
+    if error[0]:
+        print(f"⚠️  {error[0]}")
         return []
+
+    return result
 
 
 def load_qved_dataset(json_path: str, data_path: str, num_frames: int = 16) -> Dataset:
     """
-    Load QVED dataset from JSON and extract video frames.
-    
+    Load QVED dataset metadata (lazy loading - no frame extraction).
+    Frames are extracted on-the-fly in the collator during training.
+
     Args:
         json_path: Path to JSON file with dataset annotations
         data_path: Base path for video files
-        num_frames: Number of frames to extract per video
-    
+        num_frames: Number of frames to extract per video (stored for collator)
+
     Returns:
-        HuggingFace Dataset with extracted frames and formatted messages
+        HuggingFace Dataset with video paths and text (no frames in memory)
     """
     print(f"📂 Loading dataset from: {json_path}")
-    
+
     with open(json_path, 'r') as f:
         data = json.load(f)
-    
+
     formatted_data = []
     skipped = 0
-    
+
     for idx, sample in enumerate(data):
         video_path = sample.get("video", "")
         full_video_path = os.path.join(data_path, video_path)
-        
-        # Extract frames from video
+
+        # Only check if video file exists (no frame extraction yet)
         if not os.path.exists(full_video_path):
-            print(f"⚠️  Video not found: {full_video_path}")
             skipped += 1
             continue
-        
-        frames = extract_frames(full_video_path, num_frames)
-        
-        if not frames:
-            print(f"⚠️  Failed to extract frames from: {full_video_path}")
-            skipped += 1
-            continue
-        
-        # Handle both conversation formats
+
+        # Parse question and answer from conversations
         if "conversations" in sample:
             conversations = sample["conversations"]
-            # Convert to expected format
             question = ""
             answer = ""
             for conv in conversations:
@@ -255,112 +226,86 @@ def load_qved_dataset(json_path: str, data_path: str, num_frames: int = 16) -> D
         else:
             question = sample.get("question", "")
             answer = sample.get("answer", "")
-        
-        # Format messages for Gemma-3n chat template
-        messages = [
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "You are an expert physiotherapy assistant analyzing exercise videos.",
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": question}
-                ] + [{"type": "image", "image": frame} for frame in frames]
-            },
-            {
-                "role": "assistant",
-                "content": [{"type": "text", "text": answer}]
-            },
-        ]
-        
+
+        # Skip samples with empty question or answer
+        if not question.strip() or not answer.strip():
+            skipped += 1
+            continue
+
+        # Store metadata only — frames extracted lazily in collator
         formatted_data.append({
-            "messages": messages,
-            "video_path": video_path
+            "video_path": full_video_path,
+            "question": question,
+            "answer": answer,
         })
-        
-        if (idx + 1) % 10 == 0:
-            print(f"  Processed {idx + 1}/{len(data)} samples...")
-    
-    print(f"✓ Loaded {len(formatted_data)} samples (skipped {skipped})")
-    
+
+        if (idx + 1) % 1000 == 0:
+            print(f"  Validated {idx + 1}/{len(data)} entries...")
+
+    print(f"✓ Loaded {len(formatted_data)} samples (skipped {skipped} missing/invalid)")
+
     return Dataset.from_list(formatted_data)
 
 
-def process_vision_info(messages: list) -> List[Image.Image]:
+def create_collate_fn(processor, num_frames=16):
     """
-    Extract images from message content for processing.
-    
-    Args:
-        messages: List of message dictionaries
-    
-    Returns:
-        List of PIL Images
-    """
-    image_inputs = []
-    for msg in messages:
-        content = msg.get("content", [])
-        if not isinstance(content, list):
-            content = [content]
-        
-        for element in content:
-            if isinstance(element, dict) and ("image" in element or element.get("type") == "image"):
-                if "image" in element:
-                    image = element["image"]
-                else:
-                    image = element
-                
-                if image is not None:
-                    # Handle dictionary with bytes
-                    if isinstance(image, dict) and "bytes" in image:
-                        pil_image = Image.open(io.BytesIO(image["bytes"]))
-                        image_inputs.append(pil_image.convert("RGB"))
-                    # Handle PIL Image objects
-                    elif hasattr(image, "convert"):
-                        image_inputs.append(image.convert("RGB"))
-    
-    return image_inputs
+    Create data collator that extracts frames on-the-fly (lazy loading).
+    Each batch builds messages from video_path + question + answer,
+    extracts frames at collation time instead of dataset load time.
 
-
-def create_collate_fn(processor):
-    """
-    Create data collator function for batching samples.
-    
     Args:
         processor: AutoProcessor for Gemma-3n
-    
+        num_frames: Number of frames to extract per video
+
     Returns:
         Collate function
     """
     def collate_fn(examples):
         texts = []
         images_list = []
-        
+
         for example in examples:
+            # Extract frames on-the-fly from video path
+            frames = extract_frames(example["video_path"], num_frames=num_frames)
+
+            if not frames:
+                # Skip samples with failed frame extraction
+                continue
+
+            # Build messages in chat template format
+            image_content = [{"type": "image", "image": frame} for frame in frames]
+            messages = [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": "You are a helpful physiotherapy assistant."}]
+                },
+                {
+                    "role": "user",
+                    "content": image_content + [{"type": "text", "text": example["question"]}]
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": example["answer"]}]
+                }
+            ]
+
             # Apply chat template to get text
             text = processor.apply_chat_template(
-                example["messages"], tokenize=False, add_generation_prompt=False
+                messages, tokenize=False, add_generation_prompt=False
             ).strip()
             texts.append(text)
-            
-            # Extract images from messages
-            images = process_vision_info(example["messages"])
-            images_list.append(images)
-        
+            images_list.append(frames)
+
+        if not texts:
+            return None
+
         # Tokenize the texts and process the images
         batch = processor(
             text=texts, images=images_list, return_tensors="pt", padding=True
         )
-        
+
         # The labels are the input_ids, and we mask the padding tokens in the loss computation
         labels = batch["input_ids"].clone()
-        
-        # Use Gemma3n specific token masking
         labels[labels == processor.tokenizer.pad_token_id] = -100
         if hasattr(processor.tokenizer, 'image_token_id'):
             labels[labels == processor.tokenizer.image_token_id] = -100
@@ -370,10 +315,10 @@ def create_collate_fn(processor):
             labels[labels == processor.tokenizer.boi_token_id] = -100
         if hasattr(processor.tokenizer, 'eoi_token_id'):
             labels[labels == processor.tokenizer.eoi_token_id] = -100
-        
+
         batch["labels"] = labels
         return batch
-    
+
     return collate_fn
 
 
@@ -660,7 +605,7 @@ def main():
         learning_rate=args.learning_rate,
         num_train_epochs=args.num_train_epochs,
         warmup_ratio=args.warmup_ratio,
-        logging_steps=1,
+        logging_steps=steps_info['logging_steps'],
         save_steps=save_steps,
         save_strategy="steps",
         bf16=torch.cuda.is_bf16_supported(),
@@ -678,8 +623,8 @@ def main():
         max_grad_norm=1.0,  # Gradient clipping for stability
     )
     
-    # Create collate function
-    collate_fn = create_collate_fn(processor)
+    # Create collate function (lazy: extracts frames on-the-fly per batch)
+    collate_fn = create_collate_fn(processor, num_frames=args.num_frames)
     
     # Initialize trainer
     print("\n🚀 Initializing trainer...")
