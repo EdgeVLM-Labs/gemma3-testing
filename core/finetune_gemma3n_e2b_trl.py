@@ -682,79 +682,74 @@ def main():
             json.dump(vars(args), f, indent=2)
         print("✓ Training arguments saved")
         
-        # Upload to HuggingFace if requested
-        if args.upload_to_hf:
-            if not HF_HUB_AVAILABLE:
-                print("\n⚠️  Cannot upload: huggingface_hub not installed")
-                print("    Install with: pip install huggingface_hub")
-            else:
-                print("\n" + "=" * 70)
-                print("📤 Uploading model to HuggingFace...")
-                print("=" * 70)
-                
+        # Upload to HuggingFace automatically
+        if not HF_HUB_AVAILABLE:
+            print("\n⚠️  Cannot upload: huggingface_hub not installed")
+            print("    Install with: pip install huggingface_hub")
+        else:
+            print("\n" + "=" * 70)
+            print("📤 Uploading model to HuggingFace...")
+            print("=" * 70)
+
+            try:
+                repo_name = Path(args.output_dir).name
+                repo_id = f"{args.hf_org}/{repo_name}"
+
+                api = HfApi()
                 try:
-                    # Extract repo name from output_dir
-                    repo_name = Path(args.output_dir).name
-                    repo_id = f"{args.hf_org}/{repo_name}"
-                    
-                    # Check if logged in
-                    api = HfApi()
-                    try:
-                        user_info = api.whoami()
-                        print(f"✓ Logged in as: {user_info['name']}")
-                    except Exception:
-                        hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
-                        if hf_token:
-                            print("  Using HF_TOKEN from environment...")
-                            login(token=hf_token)
-                        else:
-                            print("\n⚠️  Not logged in to HuggingFace")
-                            print("    Please run: huggingface-cli login")
-                            print("    Or set HF_TOKEN environment variable")
-                            raise Exception("HuggingFace authentication required")
-                    
-                    print(f"\n📦 Creating repository: {repo_id}")
-                    print(f"   Private: {args.hf_private}")
-                    
-                    # Create repository
-                    create_repo(
-                        repo_id=repo_id,
-                        repo_type="model",
-                        private=args.hf_private,
-                        exist_ok=True
-                    )
-                    print("✓ Repository created/verified")
-                    
-                    # Upload model folder
-                    print(f"\n🚀 Uploading files from: {args.output_dir}")
-                    upload_folder(
-                        folder_path=args.output_dir,
-                        repo_id=repo_id,
-                        repo_type="model",
-                        commit_message=f"Upload finetuned Gemma-3n-E2B model (epochs={args.num_train_epochs}, lr={args.learning_rate})",
-                        ignore_patterns=["*.py", "__pycache__", "*.pyc", "runs/*", "wandb/*", "checkpoint-*"],
-                    )
-                    
-                    repo_url = f"https://huggingface.co/{repo_id}"
-                    print("\n" + "=" * 70)
-                    print("✅ Upload Complete!")
-                    print("=" * 70)
-                    print(f"🔗 Model URL: {repo_url}")
-                    print(f"\nTo use this model:")
-                    print(f"  from transformers import AutoProcessor, Gemma3nForConditionalGeneration")
-                    print(f"  from peft import PeftModel")
-                    print(f"")
-                    print(f"  base_model = Gemma3nForConditionalGeneration.from_pretrained('google/gemma-3n-E2B-it')")
-                    print(f"  model = PeftModel.from_pretrained(base_model, '{repo_id}')")
-                    print(f"  processor = AutoProcessor.from_pretrained('{repo_id}')")
-                    print("=" * 70)
-                    
-                except Exception as e:
-                    print(f"\n❌ Upload failed: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    print(f"\n💡 You can manually upload later using:")
-                    print(f"   python utils/hf_upload.py --model_path {args.output_dir} --org {args.hf_org}")
+                    user_info = api.whoami()
+                    print(f"✓ Logged in as: {user_info['name']}")
+                except Exception:
+                    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+                    if hf_token:
+                        print("  Using HF_TOKEN from environment...")
+                        login(token=hf_token)
+                    else:
+                        print("\n⚠️  Not logged in to HuggingFace")
+                        print("    Please run: huggingface-cli login")
+                        print("    Or set HF_TOKEN environment variable")
+                        raise Exception("HuggingFace authentication required")
+
+                print(f"\n📦 Creating repository: {repo_id}")
+                print(f"   Private: {args.hf_private}")
+
+                create_repo(
+                    repo_id=repo_id,
+                    repo_type="model",
+                    private=args.hf_private,
+                    exist_ok=True
+                )
+                print("✓ Repository created/verified")
+
+                print(f"\n🚀 Uploading files from: {args.output_dir}")
+                upload_folder(
+                    folder_path=args.output_dir,
+                    repo_id=repo_id,
+                    repo_type="model",
+                    commit_message=f"Upload finetuned Gemma-3n-E2B model (epochs={args.num_train_epochs}, lr={args.learning_rate})",
+                    ignore_patterns=["*.py", "__pycache__", "*.pyc", "runs/*", "wandb/*", "checkpoint-*"],
+                )
+
+                repo_url = f"https://huggingface.co/{repo_id}"
+                print("\n" + "=" * 70)
+                print("✅ Upload Complete!")
+                print("=" * 70)
+                print(f"🔗 Model URL: {repo_url}")
+                print(f"\nTo use this model:")
+                print(f"  from transformers import AutoProcessor, Gemma3nForConditionalGeneration")
+                print(f"  from peft import PeftModel")
+                print(f"")
+                print(f"  base_model = Gemma3nForConditionalGeneration.from_pretrained('google/gemma-3n-E2B-it')")
+                print(f"  model = PeftModel.from_pretrained(base_model, '{repo_id}')")
+                print(f"  processor = AutoProcessor.from_pretrained('{repo_id}')")
+                print("=" * 70)
+
+            except Exception as e:
+                print(f"\n❌ Upload failed: {e}")
+                import traceback
+                traceback.print_exc()
+                print(f"\n💡 You can manually upload later using:")
+                print(f"   python utils/hf_upload.py --model_path {args.output_dir} --org {args.hf_org}")
         
     except KeyboardInterrupt:
         print("\n⚠️  Training interrupted by user")
