@@ -72,6 +72,7 @@ import argparse
 import json
 import math
 import os
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -735,14 +736,27 @@ def main():
                 print("✅ Upload Complete!")
                 print("=" * 70)
                 print(f"🔗 Model URL: {repo_url}")
-                print(f"\nTo use this model:")
-                print(f"  from transformers import AutoProcessor, Gemma3nForConditionalGeneration")
-                print(f"  from peft import PeftModel")
-                print(f"")
-                print(f"  base_model = Gemma3nForConditionalGeneration.from_pretrained('google/gemma-3n-E2B-it')")
-                print(f"  model = PeftModel.from_pretrained(base_model, '{repo_id}')")
-                print(f"  processor = AutoProcessor.from_pretrained('{repo_id}')")
                 print("=" * 70)
+
+                # Auto-run inference on test dataset
+                print("\n" + "=" * 70)
+                print("🔍 Starting inference on QVED test dataset...")
+                print("=" * 70)
+                inference_cmd = [
+                    "bash", "scripts/run_inference_transformers.sh",
+                    "--hf_repo", repo_id,
+                    "--test_json", "dataset/qved_test.json",
+                    "--data_path", "dataset",
+                    "--num_frames", str(args.num_frames),
+                ]
+                print(f"Running: {' '.join(inference_cmd)}\n")
+                inference_result = subprocess.run(inference_cmd)
+                if inference_result.returncode == 0:
+                    print("\n✅ Inference completed successfully!")
+                else:
+                    print(f"\n⚠️  Inference exited with code: {inference_result.returncode}")
+                    print(f"You can re-run manually:")
+                    print(f"  bash scripts/run_inference_transformers.sh --hf_repo {repo_id}")
 
             except Exception as e:
                 print(f"\n❌ Upload failed: {e}")
@@ -750,7 +764,7 @@ def main():
                 traceback.print_exc()
                 print(f"\n💡 You can manually upload later using:")
                 print(f"   python utils/hf_upload.py --model_path {args.output_dir} --org {args.hf_org}")
-        
+
     except KeyboardInterrupt:
         print("\n⚠️  Training interrupted by user")
         print(f"💾 Saving checkpoint to: {args.output_dir}/interrupted")

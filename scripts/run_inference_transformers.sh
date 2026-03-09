@@ -36,12 +36,12 @@ echo "========================================="
 MODEL_PATH=""
 HF_REPO=""
 TEST_JSON="dataset/qved_test.json"
-DATA_PATH="videos"
+DATA_PATH="dataset"
 OUTPUT_DIR=""
 DEVICE="cuda"
 MAX_NEW_TOKENS=256
 NUM_FRAMES=16
-LIMIT="50"
+LIMIT=""
 NO_BERT=""  # Enable BERT by default for evaluation
 
 # Parse arguments
