@@ -377,10 +377,10 @@ def main():
                         help="Learning rate (default: 2e-4)")
     parser.add_argument("--per_device_train_batch_size", type=int, default=8,
                         help="Training batch size per device (default: 8)")
-    parser.add_argument("--per_device_eval_batch_size", type=int, default=8,
-                        help="Evaluation batch size per device (default: 8)")
+    parser.add_argument("--per_device_eval_batch_size", type=int, default=4,
+                        help="Evaluation batch size per device (default: 4)")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=4,
-                        help="Gradient accumulation steps (default: 4)")
+                        help="Gradient accumulation steps (default: 4, effective batch=32)")
     parser.add_argument("--max_seq_length", type=int, default=2048,
                         help="Maximum sequence length (default: 2048)")
     
@@ -528,6 +528,21 @@ def main():
             if args.gradient_checkpointing:
                 model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
             print(f"✓ Model loaded in {dtype} (LoRA, no quantization)")
+
+        # Patch vision tower to process images in chunks (avoids 32-bit index overflow
+        # when batch_size * num_frames exceeds conv2d limits in MobileNetV5)
+        _orig_get_image_features = model.model.get_image_features
+        VISION_CHUNK_SIZE = 32  # Process max 32 images at a time through vision tower
+
+        def _chunked_get_image_features(pixel_values, **kwargs):
+            if pixel_values.shape[0] <= VISION_CHUNK_SIZE:
+                return _orig_get_image_features(pixel_values, **kwargs)
+            chunks = pixel_values.split(VISION_CHUNK_SIZE, dim=0)
+            features = [_orig_get_image_features(chunk, **kwargs) for chunk in chunks]
+            return torch.cat(features, dim=0)
+
+        model.model.get_image_features = _chunked_get_image_features
+        print(f"✓ Vision tower patched for chunked processing (chunk_size={VISION_CHUNK_SIZE})")
 
         print(f"  Model dtype: {dtype}")
 
