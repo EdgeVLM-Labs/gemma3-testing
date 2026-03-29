@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
 # ------------------ Configuration ------------------ #
-REPO_ID = "EdgeVLM-Labs/QEVD-fine-grained-feedback-cleaned"  # Dataset repository
+REPO_ID = "EdgeVLM-Labs/QVED-CLEANED-10"  # Dataset repository
 LOCAL_DIR = Path("dataset")                  # Local download directory
 MAX_PER_CLASS = 5                            # Number of videos per class
 FILE_EXT = ".mp4"                            # Video file extension

@@ -36,12 +36,12 @@ echo "========================================="
 MODEL_PATH=""
 HF_REPO=""
 TEST_JSON="dataset/qved_test.json"
-DATA_PATH="videos"
+DATA_PATH="dataset"
 OUTPUT_DIR=""
 DEVICE="cuda"
 MAX_NEW_TOKENS=256
-NUM_FRAMES=8
-LIMIT="50"
+NUM_FRAMES=16
+LIMIT=""
 NO_BERT=""  # Enable BERT by default for evaluation
 
 # Parse arguments
@@ -106,7 +106,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --output_dir      Output directory for results (default: auto-generated)"
             echo "  --device          Device to use: cuda/cpu (default: cuda)"
             echo "  --max_new_tokens  Max tokens to generate (default: 256)"
-            echo "  --num_frames      Frames to extract per video (default: 8)"
+            echo "  --num_frames      Frames to extract per video (default: 16)"
             echo "  --limit           Limit number of samples (default: 50)"
             echo "  --no-bert         Skip BERT similarity (faster evaluation)"
             echo "  --use-bert        Enable BERT similarity calculation (enabled by default)"
@@ -177,7 +177,7 @@ if [ -n "$LIMIT" ]; then
 fi
 
 set +e  # Don't exit on error for inference step
-python utils/test_inference_transformers.py \
+python core/inference.py \
     --model_path "$MODEL_PATH" \
     --test_json "$TEST_JSON" \
     --data_path "$DATA_PATH" \

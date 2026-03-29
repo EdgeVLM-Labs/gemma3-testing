@@ -6,7 +6,7 @@ This script runs inference on a single video using the Google/Gemma-3n model via
 Based on the working batch inference approach.
 
 Usage:
-    python utils/infer_qved.py \
+    python unsloth/infer_qved.py \
         --model_path google/gemma-3n-E2B-it \
         --video_path sample_videos/00000340.mp4 \
         --prompt "Analyze the exercise form shown in this video"

@@ -817,7 +817,7 @@ def create_excel_report(results: List[Dict], output_path: str, use_bert: bool = 
 def main():
     parser = argparse.ArgumentParser(description="Generate test evaluation report with similarity scores")
     parser.add_argument("--predictions", type=str, required=True,
-                        help="Path to predictions JSON from test_inference.py")
+                        help="Path to predictions JSON from inference")
     parser.add_argument("--output", type=str, default=None,
                         help="Output Excel file path (default: same directory as predictions)")
     parser.add_argument("--no-bert", action="store_true",

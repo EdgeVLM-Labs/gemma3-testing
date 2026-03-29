@@ -40,7 +40,7 @@ fi
 # Step 3: Start finetuning
 # ==========================
 echo -e "\n[Step 2/4] Activating environment and starting finetuning..."
-bash scripts/finetune_qved.sh || { echo "Finetuning failed"; exit 1; }
+bash scripts/finetune_gemma3n_e2b_trl.sh || { echo "Finetuning failed"; exit 1; }
 
 # Generate training plots
 echo ""
@@ -114,23 +114,9 @@ echo -e "\n========================================="
 echo "All steps complete!"
 echo "========================================="
 echo ""
-echo "To use the finetuned Gemma-3N-E2B model for inference:"
-echo "  python utils/infer_qved.py \\"
-echo "    --model_path $MODEL_PATH \\"
-echo "    --video_path sample_videos/00000340.mp4"
-echo ""
-echo "Adjustable parameters in utils/infer_qved.py:"
-echo "  --model_path       Path to model checkpoint (default: google/gemma-3n-E2B)"
-echo "  --video_path       Path to video file (default: sample_videos/00000340.mp4)"
-echo "  --prompt           Custom prompt (default: physiotherapy evaluation prompt)"
-echo "  --device           Device to use (default: cuda, options: cuda/cpu)"
-echo "  --max_new_tokens   Max tokens to generate (default: 512)"
-echo ""
-echo "To run inference via script:"
-echo "Using local checkpoint:"
-echo "  bash scripts/run_inference.sh --model_path $MODEL_PATH"
-echo ""
-echo "Using HuggingFace model:"
-echo "  bash scripts/run_inference.sh --hf_repo YOUR_HF_ORG_NAME/${HF_REPO_NAME}"
+echo "To run inference with the finetuned model:"
+echo "  bash scripts/run_inference_transformers.sh \\"
+echo "    --test_json dataset/qved_test.json \\"
+echo "    --data_path dataset"
 echo ""
 echo "========================================="

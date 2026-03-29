@@ -26,9 +26,8 @@ TEST_RATIO = 0.20
 
 # Matplotlib configuration
 plt.rcParams.update({
-    "text.usetex": True,
+    "text.usetex": False,
     "font.family": "serif",
-    "font.serif": ["Computer Modern Roman"],
     "axes.labelsize": 12,
     "font.size": 12,
     "legend.fontsize": 10,
@@ -91,9 +90,9 @@ def plot_loss(epochs, loss, output_path=None, eval_epochs=None, eval_loss=None, 
     ax.plot(epochs, loss, linewidth=2, color='#2E86AB', marker='o', markersize=3, alpha=0.8, label='Training Loss')
     if eval_epochs and eval_loss:
         ax.plot(eval_epochs, eval_loss, linewidth=2, color='#E63946', marker='s', markersize=4, alpha=0.8, label='Validation Loss')
-    ax.set_xlabel(r'\textbf{Epoch}')
-    ax.set_ylabel(r'\textbf{Loss}')
-    ax.set_title(r'\textbf{Training and Validation Loss}')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Loss')
+    ax.set_title('Training and Validation Loss')
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.legend()
     plt.tight_layout()
@@ -104,8 +103,8 @@ def plot_loss(epochs, loss, output_path=None, eval_epochs=None, eval_loss=None, 
 def plot_gradient_norm(epochs, grad_norm, output_path=None, pdf=None):
     fig, ax = plt.subplots(figsize=(8,6))
     ax.plot(epochs, grad_norm, linewidth=2, color='#F18F01', marker='o', markersize=3, alpha=0.8)
-    ax.set_xlabel(r'\textbf{Epoch}'); ax.set_ylabel(r'\textbf{Gradient Norm}')
-    ax.set_title(r'\textbf{Gradient Norm}')
+    ax.set_xlabel('Epoch'); ax.set_ylabel('Gradient Norm')
+    ax.set_title('Gradient Norm')
     ax.grid(True, alpha=0.3, linestyle='--')
     plt.tight_layout()
     if output_path: plt.savefig(output_path); print(f"✓ Saved gradient norm plot: {output_path}")
@@ -115,8 +114,8 @@ def plot_gradient_norm(epochs, grad_norm, output_path=None, pdf=None):
 def plot_learning_rate(epochs, lr, output_path=None, pdf=None):
     fig, ax = plt.subplots(figsize=(8,6))
     ax.plot(epochs, lr, linewidth=2, color='#06A77D', marker='o', markersize=3, alpha=0.8)
-    ax.set_xlabel(r'\textbf{Epoch}'); ax.set_ylabel(r'\textbf{Learning Rate}')
-    ax.set_title(r'\textbf{Learning Rate Schedule}')
+    ax.set_xlabel('Epoch'); ax.set_ylabel('Learning Rate')
+    ax.set_title('Learning Rate Schedule')
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.ticklabel_format(style='scientific', axis='y', scilimits=(0,0))
     plt.tight_layout()
@@ -129,12 +128,12 @@ def plot_combined(epochs, metrics, output_path=None, eval_epochs=None, eval_loss
     axes[0].plot(epochs, metrics['loss'], linewidth=2, color='#2E86AB', marker='o', markersize=2, alpha=0.8, label='Training Loss')
     if eval_epochs and eval_loss:
         axes[0].plot(eval_epochs, eval_loss, linewidth=2, color='#E63946', marker='s', markersize=4, alpha=0.8, label='Validation Loss')
-    axes[0].set_xlabel(r'\textbf{Epoch}'); axes[0].set_ylabel(r'\textbf{Loss}')
-    axes[0].set_title(r'\textbf{Training and Validation Loss}'); axes[0].grid(True, alpha=0.3, linestyle='--'); axes[0].legend()
+    axes[0].set_xlabel('Epoch'); axes[0].set_ylabel('Loss')
+    axes[0].set_title('Training and Validation Loss'); axes[0].grid(True, alpha=0.3, linestyle='--'); axes[0].legend()
     axes[1].plot(epochs, metrics['grad_norm'], linewidth=2, color='#F18F01', marker='o', markersize=2, alpha=0.8)
-    axes[1].set_xlabel(r'\textbf{Epoch}'); axes[1].set_ylabel(r'\textbf{Gradient Norm}'); axes[1].set_title(r'\textbf{Gradient Norm}'); axes[1].grid(True, alpha=0.3, linestyle='--')
+    axes[1].set_xlabel('Epoch'); axes[1].set_ylabel('Gradient Norm'); axes[1].set_title('Gradient Norm'); axes[1].grid(True, alpha=0.3, linestyle='--')
     axes[2].plot(epochs, metrics['learning_rate'], linewidth=2, color='#06A77D', marker='o', markersize=2, alpha=0.8)
-    axes[2].set_xlabel(r'\textbf{Epoch}'); axes[2].set_ylabel(r'\textbf{Learning Rate}'); axes[2].set_title(r'\textbf{Learning Rate Schedule}'); axes[2].grid(True, alpha=0.3, linestyle='--'); axes[2].ticklabel_format(style='scientific', axis='y', scilimits=(0,0))
+    axes[2].set_xlabel('Epoch'); axes[2].set_ylabel('Learning Rate'); axes[2].set_title('Learning Rate Schedule'); axes[2].grid(True, alpha=0.3, linestyle='--'); axes[2].ticklabel_format(style='scientific', axis='y', scilimits=(0,0))
     plt.tight_layout()
     if output_path: plt.savefig(output_path); print(f"✓ Saved combined plot: {output_path}")
     if pdf: pdf.savefig(fig)

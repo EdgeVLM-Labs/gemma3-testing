@@ -10,7 +10,6 @@ apt-get install -y wget git build-essential
 # 2. Clone the repository
 git clone https://github.com/EdgeVLM-Labs/gemma3-testing.git
 cd gemma3-testing
-git checkout gemma-1
 
 # 3. Run automated setup (installs conda, creates environment, installs packages)
 bash setup.sh
@@ -22,10 +21,10 @@ conda activate gemma3n
 
 ## Manual Environment Setup (Alternative)
 
-If the automated setup fails, follow these steps:
+If the automated setup fails:
 
 ```bash
-# 1. Accept conda Terms of Service (required for newer conda versions)
+# 1. Accept conda Terms of Service
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
@@ -36,112 +35,47 @@ conda create -n gemma3n python=3.11 -y
 conda activate gemma3n
 
 # 4. Install PyTorch with CUDA support
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
 
 # 5. Install project dependencies
 pip install -r requirements.txt
 
-# 6. Fix potential issues
-bash fix_unsloth.sh
-bash fix_torch_int1.sh
+# 6. If issues arise, re-run setup
+bash setup.sh
 ```
 
-## Running Inference on Sample Videos
+## Running Inference
 
 ```bash
 # 1. Make sure you're in the gemma3n environment
 conda activate gemma3n
 
-# 2. Create test dataset from sample_videos
-python create_test_json.py --video_dir sample_videos
-
-# 3. Run inference with your fine-tuned model
-bash scripts/run_inference.sh \
-  --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 \
+# 2. Run inference with transformers
+bash scripts/run_inference_transformers.sh \
   --test_json dataset/qved_test.json \
-  --data_path sample_videos
+  --data_path dataset
 ```
 
-## Running Inference on Custom Videos
+## Running Fine-tuning
 
 ```bash
-# 1. Place your videos in a folder (e.g., test_videos/)
-mkdir -p test_videos
-# Copy your .mp4 files to test_videos/
-
-# 2. Create test dataset JSON
-python create_test_json.py --video_dir test_videos
-
-# 3. Run inference
-bash scripts/run_inference.sh \
-  --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 \
-  --test_json dataset/qved_test.json \
-  --data_path test_videos \
-  --limit 10
+bash scripts/finetune_gemma3n_e2b_trl.sh
 ```
-
-## Output Files
-
-Inference results are saved to:
-- **Predictions JSON**: `results/test_inference_<model_name>/test_predictions.json`
-- **Evaluation Report**: `results/test_inference_<model_name>/test_evaluation_report.xlsx`
 
 ## Common Issues
 
 ### Issue: "conda: command not found"
-**Solution**: Install conda first:
 ```bash
 bash setup.sh
 source ~/.bashrc
 ```
 
-### Issue: "CondaToSNonInteractiveError: Terms of Service have not been accepted"
-**Solution**: Accept the ToS:
-```bash
-conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
-```
-
-### Issue: "RuntimeError: Unsloth: The tokenizer is weirdly not loaded?"
-**Solution**: This is fixed in the latest version. Make sure you have the updated code:
-```bash
-git pull origin gemma-1
-```
-
 ### Issue: "Could not open video file"
-**Solution**: Check your video path and make sure `--data_path` points to the correct directory:
-```bash
-# If videos are in /workspace/gemma3-testing/test_videos/
-bash scripts/run_inference.sh \
-  --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 \
-  --data_path /workspace/gemma3-testing/test_videos
-```
-
-## Environment Management
-
-```bash
-# Activate environment
-conda activate gemma3n
-
-# Deactivate environment
-conda deactivate
-
-# List all environments
-conda env list
-
-# Delete environment (if needed)
-conda env remove -n gemma3n
-```
+Check your video path and make sure `--data_path` points to the correct directory.
 
 ## HuggingFace Authentication
 
-If your model is private or you need to download from HuggingFace:
-
 ```bash
-# Install huggingface-cli
-pip install huggingface_hub
-
-# Login
 huggingface-cli login
 # Enter your HuggingFace token when prompted
 ```

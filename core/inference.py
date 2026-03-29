@@ -28,7 +28,7 @@ from transformers import AutoProcessor, Gemma3nForConditionalGeneration
 warnings.filterwarnings("ignore")
 
 
-def resize_image(img: Image.Image, target_width: int = 640, target_height: int = 640) -> Image.Image:
+def resize_image(img: Image.Image, target_width: int = 224, target_height: int = 224) -> Image.Image:
     """
     Resize image to target dimensions while preserving aspect ratio.
     
@@ -45,7 +45,7 @@ def resize_image(img: Image.Image, target_width: int = 640, target_height: int =
     return img
 
 
-def extract_frames(video_path: str, num_frames: int = 8) -> List[Tuple[Image.Image, float]]:
+def extract_frames(video_path: str, num_frames: int = 16) -> List[Tuple[Image.Image, float]]:
     """
     Extract evenly spaced frames from a video file.
     
@@ -120,27 +120,16 @@ def get_video_inference(
     images = [img for img, timestamp in video_frames]
     
     try:
-        # Construct messages in the proper Gemma 3n chat format
-        # Add detailed instructions to the user prompt with images
-        detailed_prompt = (
-            f"{prompt}\n\n"
-            "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend? "
-            "Always provide your response in the following format:\n"
-            "<exercise_name> - <detailed_feedback>\n\n"
-            "Where <exercise_name> is the name of the exercise being performed, "
-            "and <detailed_feedback> describes the form, technique, mistakes (if any), and recommendations."
-        )
-        
+        # Construct messages matching the training chat template exactly
         messages = [
             {
                 "role": "system",
-                "content": [{"type": "text", "text": "You are a helpful assistant analyzing physiotherapy exercise videos."}]
+                "content": [{"type": "text", "text": "You are a helpful physiotherapy assistant."}]
             },
             {
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": detailed_prompt}
-                ] + [{"type": "image", "image": img} for img in images]
+                "content": [{"type": "image", "image": img} for img in images]
+                          + [{"type": "text", "text": prompt}]
             }
         ]
         
@@ -207,8 +196,8 @@ def main():
                         choices=["cuda", "cpu"], help="Device to use")
     parser.add_argument("--max_new_tokens", type=int, default=256,
                         help="Maximum tokens to generate")
-    parser.add_argument("--num_frames", type=int, default=8,
-                        help="Number of frames to extract from videos")
+    parser.add_argument("--num_frames", type=int, default=16,
+                        help="Number of frames to extract from videos (default: 16)")
     parser.add_argument("--limit", type=int, default=None,
                         help="Limit number of samples to process")
     
@@ -295,16 +284,6 @@ def main():
         # Construct full path
         full_path = os.path.join(args.data_path, video_path)
         
-        # Format the detailed question that will be sent to the model
-        detailed_question = (
-            f"{question}\n\n"
-            "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend? "
-            "Always provide your response in the following format:\n"
-            "<exercise_name> - <detailed_feedback>\n\n"
-            "Where <exercise_name> is the name of the exercise being performed, "
-            "and <detailed_feedback> describes the form, technique, mistakes (if any), and recommendations."
-        )
-        
         if not os.path.exists(full_path):
             print(f"\n⚠️  Video not found: {full_path}")
             prediction = "[ERROR: Video file not found]"
@@ -321,7 +300,7 @@ def main():
         
         predictions.append({
             "video_path": video_path,
-            "question": detailed_question,
+            "question": question,
             "ground_truth": ground_truth,
             "prediction": prediction
         })

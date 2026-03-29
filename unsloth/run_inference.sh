@@ -6,13 +6,13 @@
 # USAGE EXAMPLES:
 #
 # 1. Quick test with HuggingFace model:
-#    bash scripts/run_inference.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --data_path videos --limit 10
+#    bash unsloth/run_inference.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --data_path videos --limit 10
 #
 # 2. Using local fine-tuned model:
-#    bash scripts/run_inference.sh --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit --test_json dataset/qved_test.json --data_path videos
+#    bash unsloth/run_inference.sh --model_path outputs/gemma3n_finetune_YYYYMMDD_HHMMSS_merged_16bit --test_json dataset/qved_test.json --data_path videos
 #
 # 3. Full inference with custom settings:
-#    bash scripts/run_inference.sh \
+#    bash unsloth/run_inference.sh \
 #      --model_path outputs/gemma3n_finetune_merged_16bit \
 #      --test_json dataset/qved_test.json \
 #      --data_path videos \
@@ -21,9 +21,9 @@
 #      --limit 100
 #
 # 4. Fast evaluation (skip BERT similarity):
-#    bash scripts/run_inference.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --no-bert
+#    bash unsloth/run_inference.sh --hf_repo EdgeVLM-Labs/gemma-3n-E2B-qved-1000 --test_json dataset/qved_test.json --no-bert
 #
-# For help: bash scripts/run_inference.sh --help
+# For help: bash unsloth/run_inference.sh --help
 
 set -e  # Exit on error
 
@@ -91,7 +91,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            echo "Usage: bash scripts/run_inference.sh [--model_path <path> | --hf_repo <repo>] [options]"
+            echo "Usage: bash unsloth/run_inference.sh [--model_path <path> | --hf_repo <repo>] [options]"
             echo ""
             echo "Model Source:"
             echo "  --model_path      Path to local finetuned model checkpoint (default: google/gemma-3n-E2B-it)"
@@ -174,7 +174,7 @@ if [ -n "$LIMIT" ]; then
 fi
 
 set +e  # Don't exit on error for inference step
-python utils/test_inference_unsloth.py \
+python unsloth/test_inference_unsloth.py \
     --model_path "$MODEL_PATH" \
     --test_json "$TEST_JSON" \
     --data_path "$DATA_PATH" \

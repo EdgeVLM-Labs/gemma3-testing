@@ -7,9 +7,9 @@
 #     bash scripts/finetune_gemma3n_e2b_trl.sh
 #
 #   Custom dataset paths:
-#     TRAIN_JSON=data/custom_train.json \
-#     VAL_JSON=data/custom_val.json \
-#     VIDEO_PATH=data/videos \
+#     TRAIN_JSON=dataset/custom_train.json \
+#     VAL_JSON=dataset/custom_val.json \
+#     VIDEO_PATH=dataset \
 #     bash scripts/finetune_gemma3n_e2b_trl.sh
 #
 #   Custom hyperparameters:
@@ -22,7 +22,7 @@
 #     WANDB_MODE=disabled bash scripts/finetune_gemma3n_e2b_trl.sh
 #
 # REQUIREMENTS:
-#   - Python environment with transformers, trl, peft, timm, opencv-python
+#   - Python environment with transformers, trl, peft, opencv-python
 #   - CUDA-capable GPU recommended
 #   - Run: pip install -r requirements.txt
 #
@@ -49,9 +49,9 @@ echo -e "${BLUE}================================================================
 MODEL_PATH="${MODEL_PATH:-google/gemma-3n-E2B-it}"
 
 # Dataset paths
-TRAIN_JSON="${TRAIN_JSON:-data/qved_feedback_train.json}"
-VAL_JSON="${VAL_JSON:-data/qved_feedback_val.json}"
-VIDEO_PATH="${VIDEO_PATH:-videos}"
+TRAIN_JSON="${TRAIN_JSON:-dataset/qved_train.json}"
+VAL_JSON="${VAL_JSON:-dataset/qved_val.json}"
+VIDEO_PATH="${VIDEO_PATH:-dataset}"
 
 # Output directory
 OUTPUT_DIR="${OUTPUT_DIR:-./outputs/gemma3n-e2b-coach-ft-$(date +%Y%m%d_%H%M%S)}"
@@ -60,9 +60,12 @@ OUTPUT_DIR="${OUTPUT_DIR:-./outputs/gemma3n-e2b-coach-ft-$(date +%Y%m%d_%H%M%S)}
 NUM_FRAMES="${NUM_FRAMES:-16}"            # Extract 16 frames per video
 EPOCHS="${EPOCHS:-3}"                     # 3 epochs
 LEARNING_RATE="${LEARNING_RATE:-2e-4}"   # 2e-4 LR
-BATCH_SIZE="${BATCH_SIZE:-4}"            # Batch size 4 (balanced for 80GB GPU)
-GRAD_ACCUM="${GRAD_ACCUM:-8}"            # Gradient accumulation 8 (effective batch size 32)
-MAX_SEQ_LEN="${MAX_SEQ_LEN:-1024}"       # Max sequence length 1024 (memory efficient for 80GB GPU)
+BATCH_SIZE="${BATCH_SIZE:-8}"            # Batch size 8 (A100 80GB)
+GRAD_ACCUM="${GRAD_ACCUM:-4}"            # Gradient accumulation 4 (effective batch size 32)
+MAX_SEQ_LEN="${MAX_SEQ_LEN:-2048}"       # Max sequence length 2048
+
+# Quantization: set USE_QLORA=true for 4-bit QLoRA (A40 48GB), false for bf16 LoRA (A100 80GB)
+USE_QLORA="${USE_QLORA:-false}"
 
 # LoRA configuration
 LORA_R="${LORA_R:-64}"                   # LoRA r=64
@@ -74,11 +77,14 @@ WARMUP_RATIO="${WARMUP_RATIO:-0.05}"     # Warmup ratio 0.05
 SAVE_STEPS="${SAVE_STEPS:-30}"           # Save every 30 steps
 EVAL_STRATEGY="${EVAL_STRATEGY:-steps}"  # Evaluate by steps
 DATALOADER_WORKERS="${DATALOADER_WORKERS:-2}"  # 2 workers
-EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-4}"  # Eval batch size 4 (memory efficient)
+EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-4}"  # Eval batch size 4
 
 # Wandb configuration
 WANDB_PROJECT="${WANDB_PROJECT:-gemma3n-qved-finetuning}"
 RUN_NAME="${RUN_NAME:-gemma3n-e2b-lr${LEARNING_RATE}-r${LORA_R}-epochs${EPOCHS}}"
+
+# Pipeline testing
+LIMIT="${LIMIT:-}"                           # Empty = use all data, set to limit samples
 
 # Other settings
 RESUME_CHECKPOINT="${RESUME_CHECKPOINT:-}"  # Empty = train from scratch
@@ -186,6 +192,10 @@ echo -e "${BLUE}Wandb:${NC}"
 echo -e "  Project:                 ${WANDB_PROJECT}"
 echo -e "  Run name:                ${RUN_NAME}"
 echo -e "  Mode:                    ${WANDB_MODE:-online}"
+if [ -n "$LIMIT" ]; then
+echo -e ""
+echo -e "${YELLOW}⚠️  PIPELINE TEST MODE: Limited to ${LIMIT} samples${NC}"
+fi
 echo -e "${BLUE}========================================================================${NC}"
 
 # ============================================================================
@@ -204,7 +214,7 @@ fi
 # Build command
 # ============================================================================
 
-CMD="python3 finetune_gemma3n_e2b_trl.py \
+CMD="python3 core/finetune_gemma3n_e2b_trl.py \
     --model_path ${MODEL_PATH} \
     --train_json ${TRAIN_JSON} \
     --data_path ${VIDEO_PATH} \
@@ -233,10 +243,22 @@ if [ -n "$VAL_JSON" ]; then
     CMD="${CMD} --val_json ${VAL_JSON}"
 fi
 
+# Add QLoRA flag if enabled
+if [ "$USE_QLORA" = "true" ]; then
+    CMD="${CMD} --use_qlora"
+    echo -e "  Using QLoRA 4-bit quantization"
+fi
+
 # Add resume checkpoint if provided
 if [ -n "$RESUME_CHECKPOINT" ]; then
     CMD="${CMD} --resume_from_checkpoint ${RESUME_CHECKPOINT}"
     echo -e "${BLUE}Resuming from checkpoint: ${RESUME_CHECKPOINT}${NC}"
+fi
+
+# Add limit if provided (for pipeline testing)
+if [ -n "$LIMIT" ]; then
+    CMD="${CMD} --limit ${LIMIT}"
+    echo -e "${YELLOW}⚠️  Limited to ${LIMIT} samples (pipeline test mode)${NC}"
 fi
 
 # Disable wandb if requested
@@ -311,13 +333,13 @@ if [ $? -eq 0 ]; then
     echo -e "${GREEN}Model saved to: ${OUTPUT_DIR}${NC}"
     echo -e "\n${YELLOW}Next steps:${NC}"
     echo -e "  1. Evaluate the model:"
-    echo -e "     python utils/test_inference_transformers.py \\"
+    echo -e "     python core/inference.py \\"
     echo -e "       --model_path ${OUTPUT_DIR} \\"
     echo -e "       --test_json data/qved_test.json \\"
     echo -e "       --data_path ${VIDEO_PATH} \\"
     echo -e "       --output results.json"
     echo -e "\n  2. Run inference on new videos:"
-    echo -e "     python scripts/run_inference_transformers.sh ${OUTPUT_DIR}"
+    echo -e "     bash scripts/run_inference_transformers.sh ${OUTPUT_DIR}"
     echo -e "\n  3. Upload to HuggingFace Hub:"
     echo -e "     python utils/hf_upload.py --model_path ${OUTPUT_DIR}"
 else

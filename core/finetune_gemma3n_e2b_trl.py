@@ -69,11 +69,12 @@ DATASET FORMAT:
 """
 
 import argparse
-import io
 import json
 import math
 import os
+import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import List, Optional
 
@@ -84,8 +85,8 @@ import cv2
 import torch
 from datasets import Dataset
 from PIL import Image
-from peft import LoraConfig
-from transformers import AutoProcessor, Gemma3nForConditionalGeneration
+from peft import LoraConfig, prepare_model_for_kbit_training
+from transformers import AutoProcessor, Gemma3nForConditionalGeneration, BitsAndBytesConfig
 from trl import SFTConfig, SFTTrainer
 
 # Optional wandb import
@@ -122,93 +123,100 @@ def resize_image(img: Image.Image, target_width: int = 224, target_height: int =
     return img
 
 
-def extract_frames(video_path: str, num_frames: int = 8) -> List[Image.Image]:
+def extract_frames(video_path: str, num_frames: int = 16, timeout: int = 30) -> List[Image.Image]:
     """
     Extract evenly spaced frames from a video file.
-    
+    Uses thread-based timeout (safe for dataloader workers, unlike signal.SIGALRM).
+
     Args:
         video_path: Path to video file
-        num_frames: Number of frames to extract (default: 8)
-    
+        num_frames: Number of frames to extract (default: 16)
+        timeout: Max seconds to spend on a single video (default: 30)
+
     Returns:
         List of PIL Images
     """
-    cap = cv2.VideoCapture(video_path)
-    
-    if not cap.isOpened():
-        print(f"❌ Error: Could not open video file: {video_path}")
+    result = []
+    error = [None]
+
+    def _extract():
+        try:
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                error[0] = f"Could not open video: {video_path}"
+                return
+
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+
+            if total_frames == 0 or fps == 0:
+                error[0] = f"Invalid video (0 frames/fps): {video_path}"
+                cap.release()
+                return
+
+            step = max(1, total_frames // num_frames)
+            for i in range(num_frames):
+                frame_idx = min(i * step, total_frames - 1)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                img = resize_image(img, target_width=224, target_height=224)
+                result.append(img)
+
+            cap.release()
+        except Exception as e:
+            error[0] = str(e)
+
+    thread = threading.Thread(target=_extract, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+
+    if thread.is_alive():
+        print(f"⚠️  Timeout extracting frames from: {video_path}")
         return []
-    
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    
-    if total_frames == 0 or fps == 0:
-        print(f"❌ Error: Invalid video file: {video_path}")
-        cap.release()
+
+    if error[0]:
+        print(f"⚠️  {error[0]}")
         return []
-    
-    # Calculate step size to evenly distribute frames
-    step = max(1, total_frames // num_frames)
-    frames = []
-    
-    for i in range(num_frames):
-        frame_idx = min(i * step, total_frames - 1)
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-        ret, frame = cap.read()
-        
-        if not ret:
-            break
-        
-        # Convert BGR to RGB
-        img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        img = resize_image(img, target_width=224, target_height=224)
-        frames.append(img)
-    
-    cap.release()
-    return frames
+
+    return result
 
 
-def load_qved_dataset(json_path: str, data_path: str, num_frames: int = 8) -> Dataset:
+def load_qved_dataset(json_path: str, data_path: str, num_frames: int = 16) -> Dataset:
     """
-    Load QVED dataset from JSON and extract video frames.
-    
+    Load QVED dataset metadata (lazy loading - no frame extraction).
+    Frames are extracted on-the-fly in the collator during training.
+
     Args:
         json_path: Path to JSON file with dataset annotations
         data_path: Base path for video files
-        num_frames: Number of frames to extract per video
-    
+        num_frames: Number of frames to extract per video (stored for collator)
+
     Returns:
-        HuggingFace Dataset with extracted frames and formatted messages
+        HuggingFace Dataset with video paths and text (no frames in memory)
     """
     print(f"📂 Loading dataset from: {json_path}")
-    
+
     with open(json_path, 'r') as f:
         data = json.load(f)
-    
+
     formatted_data = []
     skipped = 0
-    
+
     for idx, sample in enumerate(data):
         video_path = sample.get("video", "")
         full_video_path = os.path.join(data_path, video_path)
-        
-        # Extract frames from video
+
+        # Only check if video file exists (no frame extraction yet)
         if not os.path.exists(full_video_path):
-            print(f"⚠️  Video not found: {full_video_path}")
             skipped += 1
             continue
-        
-        frames = extract_frames(full_video_path, num_frames)
-        
-        if not frames:
-            print(f"⚠️  Failed to extract frames from: {full_video_path}")
-            skipped += 1
-            continue
-        
-        # Handle both conversation formats
+
+        # Parse question and answer from conversations
         if "conversations" in sample:
             conversations = sample["conversations"]
-            # Convert to expected format
             question = ""
             answer = ""
             for conv in conversations:
@@ -219,112 +227,86 @@ def load_qved_dataset(json_path: str, data_path: str, num_frames: int = 8) -> Da
         else:
             question = sample.get("question", "")
             answer = sample.get("answer", "")
-        
-        # Format messages for Gemma-3n chat template
-        messages = [
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "You are an expert physiotherapy assistant analyzing exercise videos.",
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": question}
-                ] + [{"type": "image", "image": frame} for frame in frames]
-            },
-            {
-                "role": "assistant",
-                "content": [{"type": "text", "text": answer}]
-            },
-        ]
-        
+
+        # Skip samples with empty question or answer
+        if not question.strip() or not answer.strip():
+            skipped += 1
+            continue
+
+        # Store metadata only — frames extracted lazily in collator
         formatted_data.append({
-            "messages": messages,
-            "video_path": video_path
+            "video_path": full_video_path,
+            "question": question,
+            "answer": answer,
         })
-        
-        if (idx + 1) % 10 == 0:
-            print(f"  Processed {idx + 1}/{len(data)} samples...")
-    
-    print(f"✓ Loaded {len(formatted_data)} samples (skipped {skipped})")
-    
+
+        if (idx + 1) % 1000 == 0:
+            print(f"  Validated {idx + 1}/{len(data)} entries...")
+
+    print(f"✓ Loaded {len(formatted_data)} samples (skipped {skipped} missing/invalid)")
+
     return Dataset.from_list(formatted_data)
 
 
-def process_vision_info(messages: list) -> List[Image.Image]:
+def create_collate_fn(processor, num_frames=16):
     """
-    Extract images from message content for processing.
-    
-    Args:
-        messages: List of message dictionaries
-    
-    Returns:
-        List of PIL Images
-    """
-    image_inputs = []
-    for msg in messages:
-        content = msg.get("content", [])
-        if not isinstance(content, list):
-            content = [content]
-        
-        for element in content:
-            if isinstance(element, dict) and ("image" in element or element.get("type") == "image"):
-                if "image" in element:
-                    image = element["image"]
-                else:
-                    image = element
-                
-                if image is not None:
-                    # Handle dictionary with bytes
-                    if isinstance(image, dict) and "bytes" in image:
-                        pil_image = Image.open(io.BytesIO(image["bytes"]))
-                        image_inputs.append(pil_image.convert("RGB"))
-                    # Handle PIL Image objects
-                    elif hasattr(image, "convert"):
-                        image_inputs.append(image.convert("RGB"))
-    
-    return image_inputs
+    Create data collator that extracts frames on-the-fly (lazy loading).
+    Each batch builds messages from video_path + question + answer,
+    extracts frames at collation time instead of dataset load time.
 
-
-def create_collate_fn(processor):
-    """
-    Create data collator function for batching samples.
-    
     Args:
         processor: AutoProcessor for Gemma-3n
-    
+        num_frames: Number of frames to extract per video
+
     Returns:
         Collate function
     """
     def collate_fn(examples):
         texts = []
         images_list = []
-        
+
         for example in examples:
+            # Extract frames on-the-fly from video path
+            frames = extract_frames(example["video_path"], num_frames=num_frames)
+
+            if not frames:
+                # Skip samples with failed frame extraction
+                continue
+
+            # Build messages in chat template format
+            image_content = [{"type": "image", "image": frame} for frame in frames]
+            messages = [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": "You are a helpful physiotherapy assistant."}]
+                },
+                {
+                    "role": "user",
+                    "content": image_content + [{"type": "text", "text": example["question"]}]
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": example["answer"]}]
+                }
+            ]
+
             # Apply chat template to get text
             text = processor.apply_chat_template(
-                example["messages"], tokenize=False, add_generation_prompt=False
+                messages, tokenize=False, add_generation_prompt=False
             ).strip()
             texts.append(text)
-            
-            # Extract images from messages
-            images = process_vision_info(example["messages"])
-            images_list.append(images)
-        
+            images_list.append(frames)
+
+        if not texts:
+            return None
+
         # Tokenize the texts and process the images
         batch = processor(
             text=texts, images=images_list, return_tensors="pt", padding=True
         )
-        
+
         # The labels are the input_ids, and we mask the padding tokens in the loss computation
         labels = batch["input_ids"].clone()
-        
-        # Use Gemma3n specific token masking
         labels[labels == processor.tokenizer.pad_token_id] = -100
         if hasattr(processor.tokenizer, 'image_token_id'):
             labels[labels == processor.tokenizer.image_token_id] = -100
@@ -334,10 +316,10 @@ def create_collate_fn(processor):
             labels[labels == processor.tokenizer.boi_token_id] = -100
         if hasattr(processor.tokenizer, 'eoi_token_id'):
             labels[labels == processor.tokenizer.eoi_token_id] = -100
-        
+
         batch["labels"] = labels
         return batch
-    
+
     return collate_fn
 
 
@@ -388,20 +370,22 @@ def main():
                         help="Output directory for checkpoints and model")
     
     # Training hyperparameters
-    parser.add_argument("--num_frames", type=int, default=8,
-                        help="Number of frames to extract from videos (default: 8, use 4-8 for 48GB GPU)")
+    parser.add_argument("--num_frames", type=int, default=16,
+                        help="Number of frames to extract from videos (default: 16)")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Limit number of training/val samples (for testing the pipeline)")
     parser.add_argument("--num_train_epochs", type=int, default=3,
                         help="Number of training epochs (default: 3)")
     parser.add_argument("--learning_rate", type=float, default=2e-4,
                         help="Learning rate (default: 2e-4)")
-    parser.add_argument("--per_device_train_batch_size", type=int, default=4,
-                        help="Training batch size per device (default: 4)")
+    parser.add_argument("--per_device_train_batch_size", type=int, default=8,
+                        help="Training batch size per device (default: 8)")
     parser.add_argument("--per_device_eval_batch_size", type=int, default=4,
                         help="Evaluation batch size per device (default: 4)")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=8,
-                        help="Gradient accumulation steps (default: 8)")
-    parser.add_argument("--max_seq_length", type=int, default=1024,
-                        help="Maximum sequence length (default: 1024)")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=4,
+                        help="Gradient accumulation steps (default: 4, effective batch=32)")
+    parser.add_argument("--max_seq_length", type=int, default=2048,
+                        help="Maximum sequence length (default: 2048)")
     
     # LoRA configuration
     parser.add_argument("--lora_r", type=int, default=64,
@@ -434,12 +418,17 @@ def main():
     parser.add_argument("--no_wandb", action="store_true",
                         help="Disable wandb logging")
     
+    # Quantization
+    parser.add_argument("--use_qlora", action="store_true", default=False,
+                        help="Use QLoRA 4-bit quantization (saves VRAM, needed for A40). "
+                             "Default: bf16 LoRA (better quality, needs A100 80GB)")
+
     # Other arguments
     parser.add_argument("--resume_from_checkpoint", type=str, default=None,
                         help="Resume training from checkpoint")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed (default: 42)")
-    
+
     # HuggingFace upload arguments
     parser.add_argument("--upload_to_hf", action="store_true",
                         help="Upload model to HuggingFace after training")
@@ -502,25 +491,69 @@ def main():
     print("\n📦 Loading model and processor...")
     try:
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-        
-        # Enable memory-efficient loading with CPU offload if needed
-        model = Gemma3nForConditionalGeneration.from_pretrained(
-            args.model_path,
-            device_map="auto",
-            torch_dtype=dtype,
-            trust_remote_code=True,
-            low_cpu_mem_usage=True,
-            max_memory={0: "45GiB", "cpu": "120GiB"}  # Leave ~35GB for activations/gradients on 80GB GPU
-        )
-        
+
+        if args.use_qlora:
+            # QLoRA: 4-bit quantization - reduces model from ~36GB to ~8GB
+            # Skip modules incompatible with 4-bit quantization:
+            # - prediction_coefs/correction_coefs: AltUp uses clamp_() which fails on uint8
+            # - lm_head: newly initialized (not from checkpoint), 4-bit state invalid
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=dtype,
+                bnb_4bit_use_double_quant=True,
+                llm_int8_skip_modules=["prediction_coefs", "correction_coefs", "lm_head"],
+            )
+
+            model = Gemma3nForConditionalGeneration.from_pretrained(
+                args.model_path,
+                device_map="auto",
+                quantization_config=bnb_config,
+                torch_dtype=dtype,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,
+            )
+
+            # Prepare model for QLoRA training
+            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=args.gradient_checkpointing)
+            print(f"✓ Model loaded with QLoRA 4-bit quantization")
+        else:
+            # bf16 LoRA: full precision weights, LoRA adapters only trained
+            # Better quality, requires more VRAM (A100 80GB recommended)
+            model = Gemma3nForConditionalGeneration.from_pretrained(
+                args.model_path,
+                device_map="auto",
+                torch_dtype=dtype,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,
+            )
+
+            if args.gradient_checkpointing:
+                model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+            print(f"✓ Model loaded in {dtype} (LoRA, no quantization)")
+
+        # Patch vision tower to process images in chunks (avoids 32-bit index overflow
+        # when batch_size * num_frames exceeds conv2d limits in MobileNetV5)
+        _orig_get_image_features = model.model.get_image_features
+        VISION_CHUNK_SIZE = 32  # Process max 32 images at a time through vision tower
+
+        def _chunked_get_image_features(pixel_values, **kwargs):
+            if pixel_values.shape[0] <= VISION_CHUNK_SIZE:
+                return _orig_get_image_features(pixel_values, **kwargs)
+            chunks = pixel_values.split(VISION_CHUNK_SIZE, dim=0)
+            features = [_orig_get_image_features(chunk, **kwargs) for chunk in chunks]
+            return torch.cat(features, dim=0)
+
+        model.model.get_image_features = _chunked_get_image_features
+        print(f"✓ Vision tower patched for chunked processing (chunk_size={VISION_CHUNK_SIZE})")
+
+        print(f"  Model dtype: {dtype}")
+
         processor = AutoProcessor.from_pretrained(
             args.model_path,
             trust_remote_code=True
         )
         processor.tokenizer.padding_side = "right"
-        
-        print(f"✓ Model loaded: {type(model).__name__}")
-        print(f"  Model dtype: {model.dtype}")
         print(f"✓ Processor loaded: {type(processor).__name__}")
         
     except Exception as e:
@@ -532,13 +565,22 @@ def main():
     # Load datasets
     print("\n📂 Loading and processing datasets...")
     train_dataset = load_qved_dataset(args.train_json, args.data_path, args.num_frames)
-    
+
     val_dataset = None
     if args.val_json and args.eval_strategy != "no":
         val_dataset = load_qved_dataset(args.val_json, args.data_path, args.num_frames)
-        print(f"✓ Validation set: {len(val_dataset)} samples")
-    
+
+    # Apply limit for pipeline testing
+    if args.limit:
+        train_dataset = train_dataset.select(range(min(args.limit, len(train_dataset))))
+        if val_dataset:
+            val_limit = min(args.limit, len(val_dataset))
+            val_dataset = val_dataset.select(range(val_limit))
+        print(f"⚠️  Limited to {args.limit} samples for pipeline testing")
+
     print(f"✓ Training set: {len(train_dataset)} samples")
+    if val_dataset:
+        print(f"✓ Validation set: {len(val_dataset)} samples")
     
     # Calculate steps
     steps_info = calculate_steps(
@@ -573,20 +615,15 @@ def main():
     # Configure training
     print("\n⚙️  Configuring training...")
     
-    # Adjust save_steps to be compatible with load_best_model_at_end
-    # save_steps must be a multiple of eval_steps when load_best_model_at_end is True
-    save_steps = args.save_steps
-    if args.eval_strategy == "steps" and val_dataset:
-        eval_steps = 30  # Using hardcoded eval_steps value
-        # Make save_steps a multiple of eval_steps
-        if save_steps % eval_steps != 0:
-            save_steps = eval_steps
-            print(f"  Adjusted save_steps from {args.save_steps} to {save_steps} (must be multiple of eval_steps={eval_steps})")
-    
+    # Use dynamically calculated eval_steps based on dataset size
+    eval_steps = steps_info['eval_steps']  # ~5 evals per epoch
+    save_steps = eval_steps  # Save at every eval for load_best_model_at_end compatibility
+    print(f"  Eval every {eval_steps} step(s), save every {save_steps} step(s)")
+
     training_args = SFTConfig(
         output_dir=args.output_dir,
         eval_strategy=args.eval_strategy,
-        eval_steps=30 if args.eval_strategy == "steps" else None,
+        eval_steps=eval_steps if args.eval_strategy == "steps" else None,
         per_device_train_batch_size=args.per_device_train_batch_size,
         per_device_eval_batch_size=args.per_device_eval_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -595,7 +632,7 @@ def main():
         learning_rate=args.learning_rate,
         num_train_epochs=args.num_train_epochs,
         warmup_ratio=args.warmup_ratio,
-        logging_steps=1,
+        logging_steps=steps_info['logging_steps'],
         save_steps=save_steps,
         save_strategy="steps",
         bf16=torch.cuda.is_bf16_supported(),
@@ -613,8 +650,8 @@ def main():
         max_grad_norm=1.0,  # Gradient clipping for stability
     )
     
-    # Create collate function
-    collate_fn = create_collate_fn(processor)
+    # Create collate function (lazy: extracts frames on-the-fly per batch)
+    collate_fn = create_collate_fn(processor, num_frames=args.num_frames)
     
     # Initialize trainer
     print("\n🚀 Initializing trainer...")
@@ -657,80 +694,90 @@ def main():
             json.dump(vars(args), f, indent=2)
         print("✓ Training arguments saved")
         
-        # Upload to HuggingFace if requested
-        if args.upload_to_hf:
-            if not HF_HUB_AVAILABLE:
-                print("\n⚠️  Cannot upload: huggingface_hub not installed")
-                print("    Install with: pip install huggingface_hub")
-            else:
-                print("\n" + "=" * 70)
-                print("📤 Uploading model to HuggingFace...")
-                print("=" * 70)
-                
+        # Upload to HuggingFace automatically
+        if not HF_HUB_AVAILABLE:
+            print("\n⚠️  Cannot upload: huggingface_hub not installed")
+            print("    Install with: pip install huggingface_hub")
+        else:
+            print("\n" + "=" * 70)
+            print("📤 Uploading model to HuggingFace...")
+            print("=" * 70)
+
+            try:
+                repo_name = Path(args.output_dir).name
+                repo_id = f"{args.hf_org}/{repo_name}"
+
+                api = HfApi()
                 try:
-                    # Extract repo name from output_dir
-                    repo_name = Path(args.output_dir).name
-                    repo_id = f"{args.hf_org}/{repo_name}"
-                    
-                    # Check if logged in
-                    api = HfApi()
-                    try:
-                        user_info = api.whoami()
-                        print(f"✓ Logged in as: {user_info['name']}")
-                    except Exception:
-                        hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
-                        if hf_token:
-                            print("  Using HF_TOKEN from environment...")
-                            login(token=hf_token)
-                        else:
-                            print("\n⚠️  Not logged in to HuggingFace")
-                            print("    Please run: huggingface-cli login")
-                            print("    Or set HF_TOKEN environment variable")
-                            raise Exception("HuggingFace authentication required")
-                    
-                    print(f"\n📦 Creating repository: {repo_id}")
-                    print(f"   Private: {args.hf_private}")
-                    
-                    # Create repository
-                    create_repo(
-                        repo_id=repo_id,
-                        repo_type="model",
-                        private=args.hf_private,
-                        exist_ok=True
-                    )
-                    print("✓ Repository created/verified")
-                    
-                    # Upload model folder
-                    print(f"\n🚀 Uploading files from: {args.output_dir}")
-                    upload_folder(
-                        folder_path=args.output_dir,
-                        repo_id=repo_id,
-                        repo_type="model",
-                        commit_message=f"Upload finetuned Gemma-3n-E2B model (epochs={args.num_train_epochs}, lr={args.learning_rate})",
-                        ignore_patterns=["*.py", "__pycache__", "*.pyc", "runs/*", "wandb/*", "checkpoint-*"],
-                    )
-                    
-                    repo_url = f"https://huggingface.co/{repo_id}"
-                    print("\n" + "=" * 70)
-                    print("✅ Upload Complete!")
-                    print("=" * 70)
-                    print(f"🔗 Model URL: {repo_url}")
-                    print(f"\nTo use this model:")
-                    print(f"  from transformers import AutoProcessor, Gemma3nForConditionalGeneration")
-                    print(f"  from peft import PeftModel")
-                    print(f"")
-                    print(f"  base_model = Gemma3nForConditionalGeneration.from_pretrained('google/gemma-3n-E2B-it')")
-                    print(f"  model = PeftModel.from_pretrained(base_model, '{repo_id}')")
-                    print(f"  processor = AutoProcessor.from_pretrained('{repo_id}')")
-                    print("=" * 70)
-                    
-                except Exception as e:
-                    print(f"\n❌ Upload failed: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    print(f"\n💡 You can manually upload later using:")
-                    print(f"   python utils/hf_upload.py --model_path {args.output_dir} --org {args.hf_org}")
-        
+                    user_info = api.whoami()
+                    print(f"✓ Logged in as: {user_info['name']}")
+                except Exception:
+                    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+                    if hf_token:
+                        print("  Using HF_TOKEN from environment...")
+                        login(token=hf_token)
+                    else:
+                        print("\n⚠️  Not logged in to HuggingFace")
+                        print("    Please run: huggingface-cli login")
+                        print("    Or set HF_TOKEN environment variable")
+                        raise Exception("HuggingFace authentication required")
+
+                print(f"\n📦 Creating repository: {repo_id}")
+                print(f"   Private: {args.hf_private}")
+
+                create_repo(
+                    repo_id=repo_id,
+                    repo_type="model",
+                    private=args.hf_private,
+                    exist_ok=True
+                )
+                print("✓ Repository created/verified")
+
+                print(f"\n🚀 Uploading files from: {args.output_dir}")
+                upload_folder(
+                    folder_path=args.output_dir,
+                    repo_id=repo_id,
+                    repo_type="model",
+                    commit_message=f"Upload finetuned Gemma-3n-E2B model (epochs={args.num_train_epochs}, lr={args.learning_rate})",
+                    ignore_patterns=["*.py", "__pycache__", "*.pyc", "runs/*", "wandb/*", "checkpoint-*"],
+                )
+
+                repo_url = f"https://huggingface.co/{repo_id}"
+                print("\n" + "=" * 70)
+                print("✅ Upload Complete!")
+                print("=" * 70)
+                print(f"🔗 Model URL: {repo_url}")
+                print("=" * 70)
+
+                # Auto-run inference on test dataset
+                print("\n" + "=" * 70)
+                print("🔍 Starting inference on QVED test dataset...")
+                print("=" * 70)
+                inference_cmd = [
+                    "bash", "scripts/run_inference_transformers.sh",
+                    "--hf_repo", repo_id,
+                    "--test_json", "dataset/qved_test.json",
+                    "--data_path", "dataset",
+                    "--num_frames", str(args.num_frames),
+                ]
+                if args.limit:
+                    inference_cmd.extend(["--limit", str(args.limit)])
+                print(f"Running: {' '.join(inference_cmd)}\n")
+                inference_result = subprocess.run(inference_cmd)
+                if inference_result.returncode == 0:
+                    print("\n✅ Inference completed successfully!")
+                else:
+                    print(f"\n⚠️  Inference exited with code: {inference_result.returncode}")
+                    print(f"You can re-run manually:")
+                    print(f"  bash scripts/run_inference_transformers.sh --hf_repo {repo_id}")
+
+            except Exception as e:
+                print(f"\n❌ Upload failed: {e}")
+                import traceback
+                traceback.print_exc()
+                print(f"\n💡 You can manually upload later using:")
+                print(f"   python utils/hf_upload.py --model_path {args.output_dir} --org {args.hf_org}")
+
     except KeyboardInterrupt:
         print("\n⚠️  Training interrupted by user")
         print(f"💾 Saving checkpoint to: {args.output_dir}/interrupted")

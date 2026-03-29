@@ -1,52 +1,30 @@
-# Core dependencies for Gemma-3N fine-tuning with Unsloth
-# Cleaned up to remove unused dependencies
+# Dependencies for Gemma-3N video fine-tuning (transformers)
 
 # ============================================================================
-# CORE MACHINE LEARNING DEPENDENCIES
+# PYTORCH
 # ============================================================================
 
-# PyTorch and related (INSTALL FIRST - specific versions for compatibility)
 torch==2.5.1
 torchvision==0.20.1
-torchaudio==2.5.1
-torchao>=0.6.0
-accelerate>=0.34.1
-bitsandbytes>=0.45.5
-xformers==0.0.28.post3  # Compatible with torch 2.5.1
 
-# Transformers and tokenizers
-# NOTE: transformers>=4.49.0 required for Gemma-3 vision support
+# ============================================================================
+# TRANSFORMERS & TRAINING
+# ============================================================================
+
 transformers==4.56.2
-tokenizers
-sentencepiece
-protobuf
-
-# Unsloth for efficient fine-tuning
-unsloth
-unsloth_zoo
 peft
 trl==0.22.2
-
-# ============================================================================
-# VISION & VIDEO PROCESSING
-# ============================================================================
-
 timm
-opencv-python
-opencv-contrib-python
-Pillow
-imageio
-decord
-einops
-einops-exts
-
-# ============================================================================
-# DATASET & HUGGING FACE
-# ============================================================================
-
+bitsandbytes
 datasets>=4.3.0
-huggingface_hub>=0.34.0,<1.0  # Must be <1.0 for transformers 4.56.2 compatibility
-hf_transfer
+huggingface_hub>=0.34.0,<1.0
+
+# ============================================================================
+# VIDEO & IMAGE PROCESSING
+# ============================================================================
+
+opencv-python
+Pillow
 
 # ============================================================================
 # TRAINING & LOGGING
@@ -55,48 +33,25 @@ hf_transfer
 wandb
 
 # ============================================================================
-# UTILITIES
+# EVALUATION
 # ============================================================================
 
 numpy<2.0
 tqdm
-typing_extensions
-scikit-learn
-
-# ============================================================================
-# EVALUATION METRICS (for eval scripts)
-# ============================================================================
-
-evaluate>=0.3.0
 nltk
 rouge-score
+evaluate                # utils/generate_test_report.py (BLEU/ROUGE metrics)
+scikit-learn            # utils/generate_test_report.py (cosine similarity)
+sentence-transformers   # utils/generate_test_report.py (BERT similarity)
+openpyxl                # utils/generate_test_report.py (Excel reports)
+matplotlib              # utils/plot_training_stats.py (training plots)
 
 # ============================================================================
-# OPTIONAL DEPENDENCIES (for specific utility scripts)
+# OPTIONAL (uncomment if needed)
 # ============================================================================
 
-# For video augmentation (utils/augment_videos.py)
-# vidaug
-
-# For test report generation (utils/generate_test_report.py)
-# openpyxl
-
-# For training plot visualization (utils/plot_training_stats.py)
-# matplotlib
-
-# ============================================================================
-# DISTRIBUTED TRAINING (optional)
-# ============================================================================
-
-# For DeepSpeed distributed training
-# deepspeed
-
-# ============================================================================
-# VIDEO MAMBA SUPPORT (optional - not needed for basic Gemma-3N)
-# ============================================================================
-
-# IMPORTANT: mamba-ssm is NOT required for basic Gemma-3N fine-tuning
-# Only needed if using VideoMamba vision encoder (rarely used)
-# Installation often fails due to build issues - requires torch pre-installed
-# To install manually if needed: pip install mamba-ssm==1.2.0 --no-cache-dir --no-build-isolation
-# mamba-ssm==1.2.0
+# pandas               # utils/clean_dataset.py
+# tabulate             # utils/clean_dataset.py
+deepspeed              # multi-GPU distributed training
+# unsloth               # unsloth/ scripts (alternative fine-tuning)
+# unsloth_zoo           # unsloth/ scripts

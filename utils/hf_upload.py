@@ -157,12 +157,13 @@ def upload_model_to_hf(
 
     # Usage instructions
     print("To use this model:")
-    print(f"  from unsloth import FastVisionModel")
-    print(f"  model, processor = FastVisionModel.from_pretrained('{repo_id}')")
+    print(f"  from transformers import Gemma3nForConditionalGeneration, AutoProcessor")
+    print(f"  model = Gemma3nForConditionalGeneration.from_pretrained('{repo_id}')")
+    print(f"  processor = AutoProcessor.from_pretrained('{repo_id}')")
     if has_adapter:
         print("\n  # For LoRA adapters:")
         print(f"  from peft import PeftModel")
-        print(f"  base_model, processor = FastVisionModel.from_pretrained('google/gemma-3n-E2B-it')")
+        print(f"  base_model = Gemma3nForConditionalGeneration.from_pretrained('google/gemma-3n-E2B-it')")
         print(f"  model = PeftModel.from_pretrained(base_model, '{repo_id}')")
     print(f"{'='*60}")
 

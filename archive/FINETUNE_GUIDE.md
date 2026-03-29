@@ -101,7 +101,7 @@ python utils/load_dataset.py 5  # 5 videos per class
 python utils/filter_ground_truth.py
 
 # Augment videos (optional)
-python utils/augment_videos.py
+python unsloth/augment_videos.py
 
 # Create train/val/test splits
 python utils/qved_from_fine_labels.py

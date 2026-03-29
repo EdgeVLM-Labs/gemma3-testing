@@ -29,8 +29,16 @@ OUTPUT_TEST_JSON = BASE_DIR / "qved_test.json"
 OUTPUT_FEEDBACKS_TRAIN_JSON = BASE_DIR / "qved_feedbacks_train.json"
 OUTPUT_FEEDBACKS_VAL_JSON = BASE_DIR / "qved_feedbacks_val.json"
 OUTPUT_FEEDBACKS_TEST_JSON = BASE_DIR / "qved_feedbacks_test.json"
-USER_PROMPT_TEMPLATE = "Please evaluate the exercise form shown. What mistakes, if any, are present, and what corrections would you recommend?"
+USER_PROMPT_TEMPLATE = "Watch the exercise being performed and provide short corrective feedback to help improve the form."
 FEEDBACK_PROMPT_TEMPLATE = "Please evaluate the exercise form shown. What feedback would you provide to improve the performance?"
+
+# Which field from fine_grained_labels.json to use as the assistant answer
+# Options: "coach", "labels_descriptive", "feedback"
+ANSWER_FIELD = "coach"
+
+# How to handle list-valued fields (e.g. coach has multiple alternatives)
+# Options: "random" (pick one randomly), "first" (always first), "join" (join all with newline)
+LIST_STRATEGY = "random"
 
 # Dataset split ratios (adjustable)
 TRAIN_RATIO = 0.60
@@ -95,17 +103,20 @@ def process_fine_grained_labels(fine_labels_path, filename_to_path, filename_to_
         else:
             relative_video_path = full_video_path
 
-        # Get assistant answer from most descriptive label
-        if 'labels_descriptive' in record and record['labels_descriptive']:
-            assistant_answer = record['labels_descriptive']
-        elif 'labels' in record and record['labels']:
-            assistant_answer = record['labels'][0] if isinstance(record['labels'], list) else record['labels']
+        # Get assistant answer from configured field (ANSWER_FIELD)
+        if ANSWER_FIELD in record and record[ANSWER_FIELD]:
+            assistant_answer = record[ANSWER_FIELD]
         else:
             assistant_answer = "No feedback available."
 
-        # Ensure assistant answer is a single string
+        # Handle list values based on LIST_STRATEGY
         if isinstance(assistant_answer, list):
-            assistant_answer = '\n'.join(str(item) for item in assistant_answer)
+            if LIST_STRATEGY == "random":
+                assistant_answer = str(random.choice(assistant_answer))
+            elif LIST_STRATEGY == "first":
+                assistant_answer = str(assistant_answer[0])
+            else:  # "join"
+                assistant_answer = '\n'.join(str(item) for item in assistant_answer)
         else:
             assistant_answer = str(assistant_answer)
 
